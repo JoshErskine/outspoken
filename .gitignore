@@ -1,0 +1,23 @@
+# build output
+bin/
+obj/
+*.user
+
+# whisper models (downloaded on first run — large binaries)
+models/
+
+# local settings / secrets (belt & braces — real secret storage is DPAPI)
+*.local.json
+.env
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# audio scratch (benchmark fixtures are committed deliberately, nothing else)
+*.wav
+!tests/fixtures/*.wav
+
+# local bridge to planning vault (contains personal paths) - never public
+CLAUDE.md
