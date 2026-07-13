@@ -1,10 +1,10 @@
 <Window x:Class="Outspoken.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Outspoken — dictation debug (T3/T4/T5)" Height="400" Width="720">
+        Title="Outspoken — dictation debug (T3–T6)" Height="400" Width="720">
   <DockPanel Margin="8">
     <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" TextWrapping="Wrap"
-               Text="Wait for '✓ model warm', then hold Ctrl+Win anywhere and speak. On release the transcript appears with its inference time. +Shift = raw mode." />
+               Text="Wait for '✓ model warm', then focus any text field, hold Ctrl+Win and speak. On release the transcript lands at your cursor (or on the clipboard if the target isn't editable). +Shift = raw mode." />
     <ListBox x:Name="EventLog" FontFamily="Consolas" />
   </DockPanel>
 </Window>

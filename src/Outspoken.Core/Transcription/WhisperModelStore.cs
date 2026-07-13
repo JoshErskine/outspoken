@@ -1,3 +1,6 @@
+using System.IO;
+using System.Net.Http;
+
 namespace Outspoken.Core.Transcription;
 
 /// <summary>
@@ -11,7 +14,9 @@ public static class WhisperModelStore
     public const string ModelFileName = "ggml-base.en-q5_1.bin";
     public const string ModelUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/" + ModelFileName;
 
-    public static string DefaultModelDirectory => Path.Combine(AppContext.BaseDirectory, "models");
+    /// <summary>Stable across builds/updates — the bin folder is not (it gets wiped on rebuild, forcing re-downloads).</summary>
+    public static string DefaultModelDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Outspoken", "models");
 
     /// <summary>Returns the model path, downloading first if absent. Progress is 0..1.</summary>
     public static async Task<string> EnsureModelAsync(
@@ -29,6 +34,8 @@ public static class WhisperModelStore
         // half-written file that later loads as a corrupt model.
         var tempPath = path + ".partial";
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        // Hugging Face rejects anonymous requests with no User-Agent (403).
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("Outspoken/0.1 (+https://github.com/JoshErskine/outspoken)");
         using var response = await http.GetAsync(ModelUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
