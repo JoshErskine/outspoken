@@ -8,7 +8,7 @@ namespace Outspoken.Core.Injection;
 /// on any failure or uncertainty the dictation text stays on the clipboard instead
 /// (never-lost invariant, spec §4).
 /// </summary>
-public sealed class InjectionEngine
+public sealed class InjectionEngine : IInjector
 {
     private readonly IInjectionEnvironment _env;
 
