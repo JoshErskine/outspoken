@@ -1,114 +1,77 @@
-using System.Diagnostics;
+using System.Media;
 using System.Windows;
 using Outspoken.Core.Audio;
 using Outspoken.Core.Hotkeys;
 using Outspoken.Core.Injection;
+using Outspoken.Core.Orchestration;
 using Outspoken.Core.Transcription;
 
 namespace Outspoken.App;
 
 /// <summary>
-/// Temporary debug harness for the T3/T4/T5 manual verifies. Replaced by the overlay
-/// pill (T9); the wiring moves to an orchestrator at T7.
+/// Debug shell around the T7 orchestrator. Feedback is a system sound + log lines for
+/// now (per plan); the overlay pill replaces this at T9.
 /// </summary>
 public partial class MainWindow : Window
 {
-    private readonly KeyboardHookService _hook;
+    private readonly KeyboardHookService _hook = new();
     private readonly WasapiAudioCaptureService _audio = new();
-    private readonly InjectionEngine _injector = new(new Win32InjectionEnvironment());
     private WhisperTranscriber? _transcriber;
+    private DictationOrchestrator? _orchestrator;
 
     public MainWindow()
     {
         InitializeComponent();
-
-        _hook = new KeyboardHookService();
-        _hook.HoldStarted += OnHoldStarted;
-        _hook.HoldEnded += OnHoldEnded;
         Closed += (_, _) =>
         {
+            _orchestrator?.Dispose();
             _hook.Dispose();
             _audio.Dispose();
             _transcriber?.Dispose();
         };
-        Loaded += async (_, _) => await InitTranscriberAsync();
+        Loaded += async (_, _) => await InitAsync();
     }
 
-    private async Task InitTranscriberAsync()
+    private async Task InitAsync()
     {
         try
         {
             var expectedModel = System.IO.Path.Combine(WhisperModelStore.DefaultModelDirectory, WhisperModelStore.ModelFileName);
             Log($"model path: {expectedModel} | exists: {System.IO.File.Exists(expectedModel)}");
-            Log("loading Whisper model (downloads ~57MB on first run)…");
             var progress = new Progress<double>(p => Log($"  model download {p:P0}"));
             _transcriber = await WhisperTranscriber.CreateAsync(downloadProgress: progress);
-            Log($"✓ model warm — load took {_transcriber.ModelLoadTime.TotalMilliseconds:F0} ms (startup cost, not per-dictation)");
+            Log($"✓ model warm — load took {_transcriber.ModelLoadTime.TotalMilliseconds:F0} ms");
+
+            _orchestrator = new DictationOrchestrator(_hook, _audio, _transcriber, new InjectionEngine(new Win32InjectionEnvironment()));
+            _orchestrator.StateChanged += OnStateChanged;
+            _orchestrator.Completed += OnCompleted;
+            _orchestrator.Failed += m => Log($"✗ {m}");
+            Log("✓ ready — hold Ctrl+Win anywhere and speak (+Shift = raw mode)");
         }
         catch (Exception ex)
         {
-            Log($"✗ transcriber init failed: {ex.Message}");
+            Log($"✗ init failed: {ex.Message}");
         }
     }
 
-    private void OnHoldStarted()
+    private void OnStateChanged(DictationState state)
     {
-        try
-        {
-            _audio.Start();
-            Log("▼ hold started — mic open, buffering…");
-        }
-        catch (Exception ex)
-        {
-            Log($"✗ mic start failed: {ex.Message}");
-        }
+        if (state == DictationState.Listening)
+            SystemSounds.Exclamation.Play(); // placeholder cue; real soft ticks land at T10
+        Log($"· {state}");
     }
 
-    private void OnHoldEnded(HoldEnded e)
+    private void OnCompleted(DictationReport r)
     {
-        try
-        {
-            var audio = _audio.Stop();
-            Log($"▲ hold ended — captured {audio.Duration.TotalSeconds:F2}s{(e.RawMode ? " [RAW]" : "")} — mic released, transcribing…");
-            _ = TranscribeAsync(audio);
-        }
-        catch (Exception ex)
-        {
-            Log($"✗ capture stop failed: {ex.Message}");
-        }
-    }
-
-    private async Task TranscribeAsync(CapturedAudio audio)
-    {
-        var transcriber = _transcriber;
-        if (transcriber is null)
-        {
-            Log("✗ transcriber not ready yet");
-            return;
-        }
-
-        try
-        {
-            var sw = Stopwatch.StartNew();
-            var text = await transcriber.TranscribeAsync(audio);
-            sw.Stop();
-            Log($"„ {(text.Length > 0 ? text : "(silence)")}  [{sw.Elapsed.TotalSeconds:F2}s]");
-
-            if (text.Length > 0)
-            {
-                var result = await _injector.InjectAsync(text);
-                Log($"→ injection: {result.Outcome}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Log($"✗ transcription failed: {ex.Message}");
-        }
+        SystemSounds.Asterisk.Play();
+        Log($"„ {r.Text}{(r.RawMode ? "  [RAW]" : "")}");
+        Log($"⏱ release→done {r.TotalFromRelease.TotalSeconds:F2}s " +
+            $"(transcribe {r.TranscribeTime.TotalSeconds:F2}s + inject {r.InjectTime.TotalSeconds:F2}s) " +
+            $"| audio {r.AudioDuration.TotalSeconds:F1}s | {r.Outcome} | target ≤1.5s {(r.TotalFromRelease.TotalSeconds <= 1.5 ? "✅" : "❌")}");
     }
 
     private void Log(string line)
     {
-        // Events arrive on hook/worker threads; ListBox lives on the UI thread.
         Dispatcher.BeginInvoke(() =>
         {
             EventLog.Items.Add($"{DateTime.Now:HH:mm:ss.fff}  {line}");

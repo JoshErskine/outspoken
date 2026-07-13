@@ -13,7 +13,7 @@ namespace Outspoken.Core.Hotkeys;
 /// uses its Dispatcher). Handlers must return fast — Windows silently removes hooks that
 /// stall the input chain.
 /// </summary>
-public sealed class KeyboardHookService : IDisposable
+public sealed class KeyboardHookService : IHotkeySource, IDisposable
 {
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100, WM_KEYUP = 0x0101, WM_SYSKEYDOWN = 0x0104, WM_SYSKEYUP = 0x0105;
