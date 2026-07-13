@@ -1,10 +1,10 @@
 <Window x:Class="Outspoken.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Outspoken — hotkey debug (T3)" Height="360" Width="560">
+        Title="Outspoken — hotkey + capture debug (T3/T4)" Height="360" Width="640">
   <DockPanel Margin="8">
     <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" TextWrapping="Wrap"
-               Text="Hold Ctrl+Win anywhere (this window does not need focus). +Shift = raw mode. Events log below; verify the combo types nothing into Notepad and the Start menu stays closed." />
+               Text="Hold Ctrl+Win anywhere and speak (this window does not need focus). +Shift = raw mode. On release the log shows the captured format (should be 16000Hz mono, non-zero peak when you spoke) and the mic-in-use indicator should clear." />
     <ListBox x:Name="EventLog" FontFamily="Consolas" />
   </DockPanel>
 </Window>
