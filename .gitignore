@@ -21,3 +21,6 @@ models/
 
 # local bridge to planning vault (contains personal paths) - never public
 CLAUDE.md
+
+# fixture transcripts (personal content, local verify only)
+tools/WhisperBenchmark/fixtures/*.txt
