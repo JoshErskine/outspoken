@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Outspoken.App/Outspoken.App.csproj" />
+    <Project Path="src/Outspoken.Core/Outspoken.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Outspoken.Core.Tests/Outspoken.Core.Tests.csproj" />
+  </Folder>
+</Solution>
