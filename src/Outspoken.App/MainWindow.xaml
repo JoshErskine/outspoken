@@ -1,10 +1,10 @@
 <Window x:Class="Outspoken.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Outspoken — hotkey + capture debug (T3/T4)" Height="360" Width="640">
+        Title="Outspoken — dictation debug (T3/T4/T5)" Height="400" Width="720">
   <DockPanel Margin="8">
     <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" TextWrapping="Wrap"
-               Text="Hold Ctrl+Win anywhere and speak (this window does not need focus). +Shift = raw mode. On release the log shows the captured format (should be 16000Hz mono, non-zero peak when you spoke) and the mic-in-use indicator should clear." />
+               Text="Wait for '✓ model warm', then hold Ctrl+Win anywhere and speak. On release the transcript appears with its inference time. +Shift = raw mode." />
     <ListBox x:Name="EventLog" FontFamily="Consolas" />
   </DockPanel>
 </Window>

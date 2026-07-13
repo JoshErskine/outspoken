@@ -1,17 +1,20 @@
+using System.Diagnostics;
 using System.Windows;
 using Outspoken.Core.Audio;
 using Outspoken.Core.Hotkeys;
+using Outspoken.Core.Transcription;
 
 namespace Outspoken.App;
 
 /// <summary>
-/// Temporary debug harness for the T3/T4 manual verifies. Replaced by the overlay pill (T9);
-/// the wiring moves to an orchestrator at T7.
+/// Temporary debug harness for the T3/T4/T5 manual verifies. Replaced by the overlay
+/// pill (T9); the wiring moves to an orchestrator at T7.
 /// </summary>
 public partial class MainWindow : Window
 {
     private readonly KeyboardHookService _hook;
     private readonly WasapiAudioCaptureService _audio = new();
+    private WhisperTranscriber? _transcriber;
 
     public MainWindow()
     {
@@ -24,7 +27,24 @@ public partial class MainWindow : Window
         {
             _hook.Dispose();
             _audio.Dispose();
+            _transcriber?.Dispose();
         };
+        Loaded += async (_, _) => await InitTranscriberAsync();
+    }
+
+    private async Task InitTranscriberAsync()
+    {
+        try
+        {
+            Log("loading Whisper model (downloads ~57MB on first run)…");
+            var progress = new Progress<double>(p => Log($"  model download {p:P0}"));
+            _transcriber = await WhisperTranscriber.CreateAsync(downloadProgress: progress);
+            Log($"✓ model warm — load took {_transcriber.ModelLoadTime.TotalMilliseconds:F0} ms (startup cost, not per-dictation)");
+        }
+        catch (Exception ex)
+        {
+            Log($"✗ transcriber init failed: {ex.Message}");
+        }
     }
 
     private void OnHoldStarted()
@@ -45,9 +65,8 @@ public partial class MainWindow : Window
         try
         {
             var audio = _audio.Stop();
-            var peak = audio.Samples.Length > 0 ? audio.Samples.Max(MathF.Abs) : 0f;
-            Log($"▲ hold ended — {e.Duration.TotalMilliseconds:F0} ms{(e.RawMode ? " [RAW]" : "")} | " +
-                $"captured {audio.Duration.TotalSeconds:F2}s @ {audio.SampleRate}Hz mono, {audio.Samples.Length} samples, peak {peak:F3} — mic released");
+            Log($"▲ hold ended — captured {audio.Duration.TotalSeconds:F2}s{(e.RawMode ? " [RAW]" : "")} — mic released, transcribing…");
+            _ = TranscribeAsync(audio);
         }
         catch (Exception ex)
         {
@@ -55,9 +74,31 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task TranscribeAsync(CapturedAudio audio)
+    {
+        var transcriber = _transcriber;
+        if (transcriber is null)
+        {
+            Log("✗ transcriber not ready yet");
+            return;
+        }
+
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var text = await transcriber.TranscribeAsync(audio);
+            sw.Stop();
+            Log($"„ {(text.Length > 0 ? text : "(silence)")}  [{sw.Elapsed.TotalSeconds:F2}s]");
+        }
+        catch (Exception ex)
+        {
+            Log($"✗ transcription failed: {ex.Message}");
+        }
+    }
+
     private void Log(string line)
     {
-        // Hook events arrive on the hook thread; ListBox lives on the UI thread.
+        // Events arrive on hook/worker threads; ListBox lives on the UI thread.
         Dispatcher.BeginInvoke(() =>
         {
             EventLog.Items.Add($"{DateTime.Now:HH:mm:ss.fff}  {line}");
