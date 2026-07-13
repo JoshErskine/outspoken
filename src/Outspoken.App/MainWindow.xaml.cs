@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using Outspoken.Core.Audio;
 using Outspoken.Core.Hotkeys;
+using Outspoken.Core.Injection;
 using Outspoken.Core.Transcription;
 
 namespace Outspoken.App;
@@ -14,6 +15,7 @@ public partial class MainWindow : Window
 {
     private readonly KeyboardHookService _hook;
     private readonly WasapiAudioCaptureService _audio = new();
+    private readonly InjectionEngine _injector = new(new Win32InjectionEnvironment());
     private WhisperTranscriber? _transcriber;
 
     public MainWindow()
@@ -36,6 +38,8 @@ public partial class MainWindow : Window
     {
         try
         {
+            var expectedModel = System.IO.Path.Combine(WhisperModelStore.DefaultModelDirectory, WhisperModelStore.ModelFileName);
+            Log($"model path: {expectedModel} | exists: {System.IO.File.Exists(expectedModel)}");
             Log("loading Whisper model (downloads ~57MB on first run)…");
             var progress = new Progress<double>(p => Log($"  model download {p:P0}"));
             _transcriber = await WhisperTranscriber.CreateAsync(downloadProgress: progress);
@@ -89,6 +93,12 @@ public partial class MainWindow : Window
             var text = await transcriber.TranscribeAsync(audio);
             sw.Stop();
             Log($"„ {(text.Length > 0 ? text : "(silence)")}  [{sw.Elapsed.TotalSeconds:F2}s]");
+
+            if (text.Length > 0)
+            {
+                var result = await _injector.InjectAsync(text);
+                Log($"→ injection: {result.Outcome}");
+            }
         }
         catch (Exception ex)
         {
