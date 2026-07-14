@@ -1,0 +1,22 @@
+<UserControl x:Class="Outspoken.App.Overlay.PillVisual"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Border x:Name="Pill" CornerRadius="24" Height="48" SnapsToDevicePixels="True"
+          HorizontalAlignment="Center" VerticalAlignment="Center">
+    <Border.Background>
+      <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FAF8F3" Offset="0" />
+        <GradientStop Color="#F5F2EB" Offset="1" />
+      </LinearGradientBrush>
+    </Border.Background>
+    <Border.Effect>
+      <DropShadowEffect Color="#000000" Opacity="0.22" BlurRadius="18" ShadowDepth="2" Direction="270" />
+    </Border.Effect>
+    <Grid>
+      <Canvas x:Name="WaveCanvas" Margin="20,0" ClipToBounds="True" />
+      <TextBlock x:Name="MessageText" Visibility="Collapsed"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                 FontFamily="Segoe UI" FontSize="13" Foreground="#1F1F1D" />
+    </Grid>
+  </Border>
+</UserControl>
