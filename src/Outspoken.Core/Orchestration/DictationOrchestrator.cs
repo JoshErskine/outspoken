@@ -63,6 +63,12 @@ public sealed class DictationOrchestrator : IDisposable
     /// <summary>A stage failed. The string is operator-facing; dictation text (when any survived) rode the injection result.</summary>
     public event Action<string>? Failed;
 
+    /// <summary>Nothing was spoken (silent hold, quick tap, or Whisper blank annotation). Dismiss quietly — no paste, no error.</summary>
+    public event Action? NoSpeech;
+
+    /// <summary>Below this peak, the capture is treated as silence and skips transcription entirely (instant dismiss).</summary>
+    public const float SilencePeak = 0.01f;
+
     private void OnHoldStarted()
     {
         try
@@ -91,6 +97,15 @@ public sealed class DictationOrchestrator : IDisposable
             return;
         }
 
+        // Nothing spoken: skip transcription entirely and dismiss instantly (Josh 2026-07-14 —
+        // a quick tap or silent hold must not linger in Processing or paste a blank annotation).
+        if (audio.Peak < SilencePeak)
+        {
+            NoSpeech?.Invoke();
+            SetState(DictationState.Idle);
+            return;
+        }
+
         SetState(DictationState.Processing);
         _ = ProcessAsync(audio, hold.RawMode); // fire-and-forget; all exits handled inside
     }
@@ -104,13 +119,10 @@ public sealed class DictationOrchestrator : IDisposable
             var text = await _transcriber.TranscribeAsync(audio);
             transcribeWatch.Stop();
 
-            if (text.Length == 0)
+            // Whisper returns "[BLANK_AUDIO]" / "(silence)" etc. for near-silent input — never paste those.
+            if (TranscriptFilters.IsBlank(text))
             {
-                // 0.0s audio = the capture came back empty (mic/device problem, seen after
-                // system sleep); real silence still has duration. Different bugs — say which.
-                Failed?.Invoke(audio.Samples.Length == 0
-                    ? "(empty capture — mic delivered no audio)"
-                    : $"(silence — nothing transcribed from {audio.Duration.TotalSeconds:F1}s of audio)");
+                NoSpeech?.Invoke();
                 return;
             }
 

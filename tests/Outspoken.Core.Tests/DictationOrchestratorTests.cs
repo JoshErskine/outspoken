@@ -21,6 +21,7 @@ public class DictationOrchestratorTests
     {
         public bool Started;
         public bool StartThrows;
+        public bool Silent; // when true, returns near-zero audio (trips the silence gate)
         public float CurrentLevel => 0f;
 
         public void Start()
@@ -32,7 +33,10 @@ public class DictationOrchestratorTests
         public CapturedAudio Stop()
         {
             Started = false;
-            return new CapturedAudio(new float[16_000], CapturedAudio.WhisperSampleRate);
+            var samples = new float[16_000];
+            if (!Silent)
+                Array.Fill(samples, 0.3f); // audible peak, above SilencePeak
+            return new CapturedAudio(samples, CapturedAudio.WhisperSampleRate);
         }
     }
 
@@ -40,9 +44,11 @@ public class DictationOrchestratorTests
     {
         public string Result = "hello world";
         public bool Throws;
+        public bool Called;
 
         public Task<string> TranscribeAsync(CapturedAudio audio, CancellationToken ct = default)
         {
+            Called = true;
             if (Throws) throw new InvalidOperationException("model exploded");
             return Task.FromResult(Result);
         }
@@ -166,17 +172,34 @@ public class DictationOrchestratorTests
     }
 
     [Fact]
-    public async Task Silence_RaisesFailed_NothingInjected()
+    public async Task SilentCapture_SkipsTranscription_RaisesNoSpeech()
     {
-        var (hotkeys, _, transcriber, injector, _, orch) = Create();
-        transcriber.Result = "";
-        var failed = new TaskCompletionSource<string>();
-        orch.Failed += m => failed.TrySetResult(m);
+        var (hotkeys, audio, transcriber, injector, _, orch) = Create();
+        audio.Silent = true;
+        var noSpeech = new TaskCompletionSource<bool>();
+        orch.NoSpeech += () => noSpeech.TrySetResult(true);
 
         hotkeys.PressAndHold();
         hotkeys.Release();
 
-        Assert.Contains("silence", await WaitFor(failed));
+        Assert.True(await WaitFor(noSpeech));
+        Assert.False(transcriber.Called);   // silence gate short-circuits before transcription
+        Assert.Empty(injector.Injected);
+        Assert.Equal(DictationState.Idle, orch.State);
+    }
+
+    [Fact]
+    public async Task BlankAnnotation_RaisesNoSpeech_NothingInjected()
+    {
+        var (hotkeys, _, transcriber, injector, _, orch) = Create();
+        transcriber.Result = "[BLANK_AUDIO]"; // Whisper's non-speech marker
+        var noSpeech = new TaskCompletionSource<bool>();
+        orch.NoSpeech += () => noSpeech.TrySetResult(true);
+
+        hotkeys.PressAndHold();
+        hotkeys.Release();
+
+        Assert.True(await WaitFor(noSpeech));
         Assert.Empty(injector.Injected);
         Assert.Equal(DictationState.Idle, orch.State);
     }

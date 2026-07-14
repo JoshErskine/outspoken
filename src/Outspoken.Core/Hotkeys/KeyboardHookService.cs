@@ -33,7 +33,7 @@ public sealed class KeyboardHookService : IHotkeySource, IDisposable
 
     public KeyboardHookService(HotkeyCombo? combo = null)
     {
-        _stateMachine = new HotkeyStateMachine(combo ?? HotkeyCombo.Default);
+        _stateMachine = new HotkeyStateMachine(combo ?? HotkeyCombo.Default, isPhysicallyDown: IsChordKeyPhysicallyDown);
         _stateMachine.HoldStarted += () => HoldStarted?.Invoke();
         _stateMachine.HoldEnded += e =>
         {
@@ -193,4 +193,22 @@ public sealed class KeyboardHookService : IHotkeySource, IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    // Virtual-key codes for the physical-state check (left/right variants both count).
+    private const int VK_CONTROL = 0x11, VK_MENU = 0x12, VK_SHIFT = 0x10, VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+
+    private static bool Down(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+
+    /// <summary>Ground truth from the OS — is a normalized chord key actually held right now?</summary>
+    private static bool IsChordKeyPhysicallyDown(ChordKey key) => key switch
+    {
+        ChordKey.Ctrl => Down(VK_CONTROL),
+        ChordKey.Shift => Down(VK_SHIFT),
+        ChordKey.Alt => Down(VK_MENU),
+        ChordKey.Win => Down(VK_LWIN) || Down(VK_RWIN),
+        _ => false,
+    };
 }

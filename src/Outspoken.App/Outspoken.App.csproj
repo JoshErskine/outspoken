@@ -4,6 +4,12 @@
     <ProjectReference Include="..\Outspoken.Core\Outspoken.Core.csproj" />
   </ItemGroup>
 
+  <!-- Overlay audio cues — royalty-free (Pixabay), bundled into the exe. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\cue-start.wav" LogicalName="cue-start.wav" />
+    <EmbeddedResource Include="Assets\cue-stop.wav" LogicalName="cue-stop.wav" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>

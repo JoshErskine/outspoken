@@ -27,16 +27,24 @@ public sealed class HotkeyStateMachine
 {
     private readonly HotkeyCombo _combo;
     private readonly TimeProvider _time;
+    private readonly Func<ChordKey, bool> _isPhysicallyDown;
     private readonly HashSet<ChordKey> _downChordKeys = [];
 
     private bool _holding;
     private bool _rawSeen;
     private long _holdStartTimestamp;
 
-    public HotkeyStateMachine(HotkeyCombo combo, TimeProvider? time = null)
+    /// <param name="isPhysicallyDown">
+    /// Ground-truth physical key state (GetAsyncKeyState in production). A low-level hook can
+    /// miss a keyup (heavy load, focus change), leaving a key stale in the tracked set — which
+    /// would let a lone combo key falsely complete the chord. Verifying physical state at
+    /// completion makes that impossible. Defaults to "trust the tracked set" for tests.
+    /// </param>
+    public HotkeyStateMachine(HotkeyCombo combo, TimeProvider? time = null, Func<ChordKey, bool>? isPhysicallyDown = null)
     {
         _combo = combo;
         _time = time ?? TimeProvider.System;
+        _isPhysicallyDown = isPhysicallyDown ?? (_ => true);
     }
 
     public event Action? HoldStarted;
@@ -74,7 +82,12 @@ public sealed class HotkeyStateMachine
                 return new KeyDecision(Suppress: true);
             }
 
-            if (isComboKey && newlyDown && _combo.Keys.All(_downChordKeys.Contains))
+            // The key that just fired this down-event is trusted (its own physical state may not
+            // be committed yet — checking GetAsyncKeyState on it here can spuriously read "up").
+            // Every OTHER combo key must be both tracked AND physically down, which is what
+            // rejects a stale key from a missed keyup.
+            if (isComboKey && newlyDown &&
+                _combo.Keys.All(k => _downChordKeys.Contains(k) && (k == key || _isPhysicallyDown(k))))
             {
                 _holding = true;
                 _rawSeen = _combo.RawModeModifier is { } raw && _downChordKeys.Contains(raw);

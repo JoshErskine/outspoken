@@ -1,4 +1,4 @@
-using System.Media;
+using System.IO;
 using System.Windows;
 using Outspoken.App.Overlay;
 using Outspoken.Core;
@@ -19,6 +19,7 @@ public partial class MainWindow : Window
 {
     private readonly KeyboardHookService _hook = new();
     private readonly WasapiAudioCaptureService _audio = new();
+    private readonly AudioCuePlayer _cues = new(LoadCue("cue-start.wav"), LoadCue("cue-stop.wav"));
     private readonly PillWindow _pill = new();
     private WhisperTranscriber? _transcriber;
     private DictationOrchestrator? _orchestrator;
@@ -31,6 +32,7 @@ public partial class MainWindow : Window
             _orchestrator?.Dispose();
             _hook.Dispose();
             _audio.Dispose();
+            _cues.Dispose();
             _transcriber?.Dispose();
             _pill.Close();
         };
@@ -84,9 +86,14 @@ public partial class MainWindow : Window
             _orchestrator = new DictationOrchestrator(_hook, _audio, _transcriber, new InjectionEngine(new Win32InjectionEnvironment()), cleanup);
             _orchestrator.StateChanged += OnStateChanged;
             _orchestrator.Completed += OnCompleted;
+            _orchestrator.NoSpeech += () =>
+            {
+                Dispatcher.BeginInvoke(() => _pill.Dismiss()); // quiet fade — nothing spoken
+                Log("· (no speech — dismissed)");
+            };
             _orchestrator.Failed += m =>
             {
-                Dispatcher.BeginInvoke(() => _pill.ShowError(m.StartsWith('(') ? "no speech heard" : "dictation error"));
+                Dispatcher.BeginInvoke(() => _pill.ShowError("dictation error"));
                 Log($"✗ {m}");
             };
             Log("✓ ready — hold Ctrl+Win anywhere and speak (+Shift = raw mode, skips cleanup)");
@@ -106,10 +113,11 @@ public partial class MainWindow : Window
             {
                 case DictationState.Listening:
                     _pill.ShowListening(() => _audio.CurrentLevel);
-                    SystemSounds.Exclamation.Play(); // placeholder cue; real soft ticks land at T10
+                    _cues.PlayStart(); // rising two-tone tick, fires with mic-open
                     break;
                 case DictationState.Processing:
                     _pill.ShowProcessing();
+                    _cues.PlayStop(); // mirrored falling tick on release
                     break;
             }
         });
@@ -120,7 +128,8 @@ public partial class MainWindow : Window
     {
         Dispatcher.BeginInvoke(() =>
         {
-            SystemSounds.Asterisk.Play();
+            // No completion sound — the two cues (start + stop) bracket the dictation; the
+            // overlay's amber pulse carries the "done" signal visually (Design Direction).
             if (r.Outcome is InjectionOutcome.CopiedToClipboard or InjectionOutcome.InjectedWithoutRestore)
                 _pill.ShowClipboard();
             else
@@ -141,5 +150,15 @@ public partial class MainWindow : Window
             EventLog.Items.Add($"{DateTime.Now:HH:mm:ss.fff}  {line}");
             EventLog.ScrollIntoView(EventLog.Items[^1]);
         });
+    }
+
+    /// <summary>Reads a bundled cue WAV from the app's embedded resources.</summary>
+    private static byte[] LoadCue(string logicalName)
+    {
+        using var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream(logicalName)
+            ?? throw new InvalidOperationException($"Embedded cue asset '{logicalName}' not found.");
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        return ms.ToArray();
     }
 }
