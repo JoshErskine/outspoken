@@ -1,0 +1,69 @@
+using Outspoken.Core.Cleanup;
+
+namespace Outspoken.Core.Tests;
+
+public class CleanupContractTests
+{
+    [Fact]
+    public void SystemPrompt_CoversTheFourMustRules()
+    {
+        var p = CleanupContract.SystemPrompt.ToLowerInvariant();
+        Assert.Contains("filler", p);            // remove filler
+        Assert.Contains("self-correction", p);   // resolve corrections
+        Assert.Contains("punctuation", p);       // fix grammar/punctuation
+        Assert.Contains("verbatim", p);          // preserve technical terms
+    }
+
+    [Fact]
+    public void SystemPrompt_ForbidsAnsweringAndCommentary()
+    {
+        var p = CleanupContract.SystemPrompt.ToLowerInvariant();
+        Assert.Contains("do not answer", p);     // must not act on instructions
+        Assert.Contains("only the cleaned", p);  // output text only
+    }
+
+    [Fact]
+    public void CleanupResult_RawCarriesTextAndReason()
+    {
+        var r = CleanupResult.Raw("hello", "offline");
+        Assert.False(r.WasCleaned);
+        Assert.Equal("hello", r.Text);
+        Assert.Equal("offline", r.FallbackReason);
+    }
+}
+
+public class ApiKeyStoreTests
+{
+    [SkippableFact]
+    public void SaveThenLoad_RoundTripsTheKey()
+    {
+        // DPAPI is Windows-only; the test project targets net10.0-windows, so this runs on the dev box.
+        Skip.IfNot(OperatingSystem.IsWindows(), "DPAPI requires Windows.");
+
+        // Isolated temp path — must never touch the real %LOCALAPPDATA%\Outspoken\apikey.dpapi.
+        var tempPath = Path.Combine(Path.GetTempPath(), $"outspoken-keytest-{Guid.NewGuid():N}.dpapi");
+        try
+        {
+            ApiKeyStore.Save("sk-ant-test-key-12345", tempPath);
+            Assert.True(ApiKeyStore.ExistsAt(tempPath));
+            Assert.Equal("sk-ant-test-key-12345", ApiKeyStore.TryLoad(tempPath));
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
+    }
+
+    [Fact]
+    public void RealKeyPath_IsNeverTheTempTestPath()
+    {
+        // Guard: the production path is a stable LOCALAPPDATA location, not a temp file.
+        Assert.Contains(Path.Combine("Outspoken", "apikey.dpapi"), ApiKeyStore.DefaultKeyFilePath);
+    }
+
+    [Fact]
+    public void Save_RejectsEmptyKey()
+    {
+        Assert.Throws<ArgumentException>(() => ApiKeyStore.Save("  "));
+    }
+}
