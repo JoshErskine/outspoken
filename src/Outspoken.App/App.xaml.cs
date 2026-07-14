@@ -1,4 +1,6 @@
+using System.IO;
 using System.Windows;
+using Outspoken.App.Overlay;
 using Outspoken.Core.Cleanup;
 
 namespace Outspoken.App;
@@ -14,6 +16,14 @@ public partial class App : Application
         if (e.Args.Length > 0 && e.Args[0].Equals("set-key", StringComparison.OrdinalIgnoreCase))
         {
             RunSetKey();
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.Length > 0 && e.Args[0].Equals("showcase", StringComparison.OrdinalIgnoreCase))
+        {
+            var outputDir = e.Args.Length > 1 ? e.Args[1] : Directory.GetCurrentDirectory();
+            ShowcaseRenderer.RenderAll(outputDir);
             Shutdown();
             return;
         }

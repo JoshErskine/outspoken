@@ -1,5 +1,6 @@
 using System.Media;
 using System.Windows;
+using Outspoken.App.Overlay;
 using Outspoken.Core;
 using Outspoken.Core.Audio;
 using Outspoken.Core.Cleanup;
@@ -18,6 +19,7 @@ public partial class MainWindow : Window
 {
     private readonly KeyboardHookService _hook = new();
     private readonly WasapiAudioCaptureService _audio = new();
+    private readonly PillWindow _pill = new();
     private WhisperTranscriber? _transcriber;
     private DictationOrchestrator? _orchestrator;
 
@@ -30,6 +32,7 @@ public partial class MainWindow : Window
             _hook.Dispose();
             _audio.Dispose();
             _transcriber?.Dispose();
+            _pill.Close();
         };
         Loaded += async (_, _) => await InitAsync();
     }
@@ -81,7 +84,11 @@ public partial class MainWindow : Window
             _orchestrator = new DictationOrchestrator(_hook, _audio, _transcriber, new InjectionEngine(new Win32InjectionEnvironment()), cleanup);
             _orchestrator.StateChanged += OnStateChanged;
             _orchestrator.Completed += OnCompleted;
-            _orchestrator.Failed += m => Log($"✗ {m}");
+            _orchestrator.Failed += m =>
+            {
+                Dispatcher.BeginInvoke(() => _pill.ShowError(m.StartsWith('(') ? "no speech heard" : "dictation error"));
+                Log($"✗ {m}");
+            };
             Log("✓ ready — hold Ctrl+Win anywhere and speak (+Shift = raw mode, skips cleanup)");
         }
         catch (Exception ex)
@@ -92,14 +99,34 @@ public partial class MainWindow : Window
 
     private void OnStateChanged(DictationState state)
     {
-        if (state == DictationState.Listening)
-            SystemSounds.Exclamation.Play(); // placeholder cue; real soft ticks land at T10
+        // StateChanged arrives on the hook/worker thread; the pill lives on the UI thread.
+        Dispatcher.BeginInvoke(() =>
+        {
+            switch (state)
+            {
+                case DictationState.Listening:
+                    _pill.ShowListening(() => _audio.CurrentLevel);
+                    SystemSounds.Exclamation.Play(); // placeholder cue; real soft ticks land at T10
+                    break;
+                case DictationState.Processing:
+                    _pill.ShowProcessing();
+                    break;
+            }
+        });
         Log($"· {state}");
     }
 
     private void OnCompleted(DictationReport r)
     {
-        SystemSounds.Asterisk.Play();
+        Dispatcher.BeginInvoke(() =>
+        {
+            SystemSounds.Asterisk.Play();
+            if (r.Outcome is InjectionOutcome.CopiedToClipboard or InjectionOutcome.InjectedWithoutRestore)
+                _pill.ShowClipboard();
+            else
+                _pill.ShowDone(rawMode: r.RawMode || !r.WasCleaned);
+        });
+
         var tag = r.RawMode ? "  [RAW]" : r.WasCleaned ? "  [cleaned]" : $"  [raw fallback: {r.CleanupFallbackReason}]";
         Log($"„ {r.Text}{tag}");
         Log($"⏱ release→done {r.TotalFromRelease.TotalSeconds:F2}s " +
