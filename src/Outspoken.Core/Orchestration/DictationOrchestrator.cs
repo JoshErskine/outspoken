@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Outspoken.Core.Audio;
+using Outspoken.Core.Cleanup;
 using Outspoken.Core.Hotkeys;
 using Outspoken.Core.Injection;
 using Outspoken.Core.Transcription;
@@ -18,10 +19,13 @@ public sealed record DictationReport(
     string Text,
     InjectionOutcome Outcome,
     bool RawMode,
+    bool WasCleaned,
     TimeSpan AudioDuration,
     TimeSpan TranscribeTime,
+    TimeSpan CleanupTime,
     TimeSpan InjectTime,
-    TimeSpan TotalFromRelease);
+    TimeSpan TotalFromRelease,
+    string? CleanupFallbackReason = null);
 
 /// <summary>
 /// The walking skeleton (T7): wires hotkey → capture → transcribe → inject into the
@@ -37,13 +41,16 @@ public sealed class DictationOrchestrator : IDisposable
     private readonly IAudioCaptureService _audio;
     private readonly ITranscriber _transcriber;
     private readonly IInjector _injector;
+    private readonly ICleanupClient? _cleanup;
 
-    public DictationOrchestrator(IHotkeySource hotkeys, IAudioCaptureService audio, ITranscriber transcriber, IInjector injector)
+    /// <param name="cleanup">Optional. Null (no key configured, or Shift-held raw runs) delivers raw transcripts.</param>
+    public DictationOrchestrator(IHotkeySource hotkeys, IAudioCaptureService audio, ITranscriber transcriber, IInjector injector, ICleanupClient? cleanup = null)
     {
         _hotkeys = hotkeys;
         _audio = audio;
         _transcriber = transcriber;
         _injector = injector;
+        _cleanup = cleanup;
         _hotkeys.HoldStarted += OnHoldStarted;
         _hotkeys.HoldEnded += OnHoldEnded;
     }
@@ -107,15 +114,23 @@ public sealed class DictationOrchestrator : IDisposable
                 return;
             }
 
-            // Raw vs cleaned diverges at T8 (cleanup client); today everything is raw.
+            // Cleanup pass (spec §4). Raw mode (Shift held) or no configured client skips it;
+            // the cleanup client itself never throws — timeout/offline/error yields raw text.
+            var cleanupWatch = Stopwatch.StartNew();
+            var cleanup = (rawMode || _cleanup is null)
+                ? CleanupResult.Raw(text, rawMode ? "raw mode (Shift)" : "no cleanup client")
+                : await _cleanup.CleanAsync(text);
+            cleanupWatch.Stop();
+
             var injectWatch = Stopwatch.StartNew();
-            var result = await _injector.InjectAsync(text);
+            var result = await _injector.InjectAsync(cleanup.Text);
             injectWatch.Stop();
             total.Stop();
 
             Completed?.Invoke(new DictationReport(
-                result.Text, result.Outcome, rawMode,
-                audio.Duration, transcribeWatch.Elapsed, injectWatch.Elapsed, total.Elapsed));
+                result.Text, result.Outcome, rawMode, cleanup.WasCleaned,
+                audio.Duration, transcribeWatch.Elapsed, cleanupWatch.Elapsed, injectWatch.Elapsed, total.Elapsed,
+                cleanup.FallbackReason));
         }
         catch (Exception ex)
         {

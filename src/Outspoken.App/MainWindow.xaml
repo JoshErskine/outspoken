@@ -1,10 +1,10 @@
 <Window x:Class="Outspoken.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Outspoken — walking skeleton (T7)" Height="400" Width="760">
+        Title="Outspoken — cleanup pipeline (T8)" Height="420" Width="800">
   <DockPanel Margin="8">
     <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" TextWrapping="Wrap"
-               Text="Wait for '✓ ready', focus any text field, hold Ctrl+Win and speak. Release → text at the cursor with a release→done timing line (raw target ≤1.5s). +Shift = raw mode." />
+               Text="Wait for '✓ ready', focus any text field, hold Ctrl+Win and speak. Release → cleaned text at the cursor ([cleaned]/[raw fallback] tag + timing). +Shift = raw mode (skips cleanup). No API key yet? Run set-key first." />
     <ListBox x:Name="EventLog" FontFamily="Consolas" />
   </DockPanel>
 </Window>

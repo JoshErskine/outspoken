@@ -1,4 +1,5 @@
 using Outspoken.Core.Audio;
+using Outspoken.Core.Cleanup;
 using Outspoken.Core.Hotkeys;
 using Outspoken.Core.Injection;
 using Outspoken.Core.Orchestration;
@@ -58,14 +59,29 @@ public class DictationOrchestratorTests
         }
     }
 
-    private static (FakeHotkeys, FakeAudio, FakeTranscriber, FakeInjector, DictationOrchestrator) Create()
+    private sealed class FakeCleanup : ICleanupClient
+    {
+        public bool Called;
+        public string? SawRaw;
+        public Func<string, CleanupResult> Behavior = raw => CleanupResult.Cleaned($"[cleaned] {raw}");
+
+        public Task<CleanupResult> CleanAsync(string rawTranscript, CancellationToken ct = default)
+        {
+            Called = true;
+            SawRaw = rawTranscript;
+            return Task.FromResult(Behavior(rawTranscript));
+        }
+    }
+
+    private static (FakeHotkeys, FakeAudio, FakeTranscriber, FakeInjector, FakeCleanup, DictationOrchestrator) Create()
     {
         var hotkeys = new FakeHotkeys();
         var audio = new FakeAudio();
         var transcriber = new FakeTranscriber();
         var injector = new FakeInjector();
-        var orchestrator = new DictationOrchestrator(hotkeys, audio, transcriber, injector);
-        return (hotkeys, audio, transcriber, injector, orchestrator);
+        var cleanup = new FakeCleanup();
+        var orchestrator = new DictationOrchestrator(hotkeys, audio, transcriber, injector, cleanup);
+        return (hotkeys, audio, transcriber, injector, cleanup, orchestrator);
     }
 
     private static async Task<T> WaitFor<T>(TaskCompletionSource<T> tcs) =>
@@ -74,7 +90,7 @@ public class DictationOrchestratorTests
     [Fact]
     public async Task FullDictation_TranscribesAndInjects_ReportsTimings()
     {
-        var (hotkeys, audio, _, injector, orch) = Create();
+        var (hotkeys, audio, _, injector, cleanup, orch) = Create();
         var done = new TaskCompletionSource<DictationReport>();
         orch.Completed += r => done.TrySetResult(r);
 
@@ -85,31 +101,74 @@ public class DictationOrchestratorTests
         hotkeys.Release();
         var report = await WaitFor(done);
 
-        Assert.Equal("hello world", report.Text);
+        // Cleanup ran and its output is what gets injected.
+        Assert.True(cleanup.Called);
+        Assert.Equal("hello world", cleanup.SawRaw);
+        Assert.True(report.WasCleaned);
+        Assert.Equal("[cleaned] hello world", report.Text);
         Assert.Equal(InjectionOutcome.Injected, report.Outcome);
-        Assert.Equal(["hello world"], injector.Injected);
+        Assert.Equal(["[cleaned] hello world"], injector.Injected);
         Assert.Equal(TimeSpan.FromSeconds(1), report.AudioDuration);
         Assert.True(report.TotalFromRelease >= report.TranscribeTime);
         Assert.Equal(DictationState.Idle, orch.State);
     }
 
     [Fact]
-    public async Task RawModeFlag_FlowsThroughToReport()
+    public async Task RawMode_SkipsCleanup_InjectsRawTranscript()
     {
-        var (hotkeys, _, _, _, orch) = Create();
+        var (hotkeys, _, _, injector, cleanup, orch) = Create();
         var done = new TaskCompletionSource<DictationReport>();
         orch.Completed += r => done.TrySetResult(r);
 
         hotkeys.PressAndHold();
         hotkeys.Release(raw: true);
+        var report = await WaitFor(done);
 
-        Assert.True((await WaitFor(done)).RawMode);
+        Assert.True(report.RawMode);
+        Assert.False(report.WasCleaned);
+        Assert.False(cleanup.Called);               // Shift-held: cleanup never invoked
+        Assert.Equal(["hello world"], injector.Injected); // raw transcript, uncleaned
+    }
+
+    [Fact]
+    public async Task CleanupFailure_FallsBackToRaw_StillInjects()
+    {
+        var (hotkeys, _, _, injector, cleanup, orch) = Create();
+        cleanup.Behavior = raw => CleanupResult.Raw(raw, "cleanup timed out");
+        var done = new TaskCompletionSource<DictationReport>();
+        orch.Completed += r => done.TrySetResult(r);
+
+        hotkeys.PressAndHold();
+        hotkeys.Release();
+        var report = await WaitFor(done);
+
+        Assert.False(report.WasCleaned);
+        Assert.Equal("cleanup timed out", report.CleanupFallbackReason);
+        Assert.Equal(["hello world"], injector.Injected); // raw survives — never-block invariant
+    }
+
+    [Fact]
+    public async Task NoCleanupClient_DeliversRaw()
+    {
+        var hotkeys = new FakeHotkeys();
+        var audio = new FakeAudio();
+        var injector = new FakeInjector();
+        using var orch = new DictationOrchestrator(hotkeys, audio, new FakeTranscriber(), injector, cleanup: null);
+        var done = new TaskCompletionSource<DictationReport>();
+        orch.Completed += r => done.TrySetResult(r);
+
+        hotkeys.PressAndHold();
+        hotkeys.Release();
+        var report = await WaitFor(done);
+
+        Assert.False(report.WasCleaned);
+        Assert.Equal(["hello world"], injector.Injected);
     }
 
     [Fact]
     public async Task Silence_RaisesFailed_NothingInjected()
     {
-        var (hotkeys, _, transcriber, injector, orch) = Create();
+        var (hotkeys, _, transcriber, injector, _, orch) = Create();
         transcriber.Result = "";
         var failed = new TaskCompletionSource<string>();
         orch.Failed += m => failed.TrySetResult(m);
@@ -125,7 +184,7 @@ public class DictationOrchestratorTests
     [Fact]
     public async Task TranscriberFailure_RaisesFailed_ReturnsToIdle()
     {
-        var (hotkeys, _, transcriber, injector, orch) = Create();
+        var (hotkeys, _, transcriber, injector, _, orch) = Create();
         transcriber.Throws = true;
         var failed = new TaskCompletionSource<string>();
         orch.Failed += m => failed.TrySetResult(m);
@@ -141,7 +200,7 @@ public class DictationOrchestratorTests
     [Fact]
     public void MicFailure_RaisesFailed_StaysIdle()
     {
-        var (hotkeys, audio, _, _, orch) = Create();
+        var (hotkeys, audio, _, _, _, orch) = Create();
         audio.StartThrows = true;
         string? failure = null;
         orch.Failed += m => failure = m;
@@ -155,7 +214,7 @@ public class DictationOrchestratorTests
     [Fact]
     public async Task StateSequence_IsListeningProcessingIdle()
     {
-        var (hotkeys, _, _, _, orch) = Create();
+        var (hotkeys, _, _, _, _, orch) = Create();
         var states = new List<DictationState>();
         var done = new TaskCompletionSource<DictationReport>();
         orch.StateChanged += states.Add;
@@ -171,7 +230,7 @@ public class DictationOrchestratorTests
     [Fact]
     public async Task Dispose_UnsubscribesFromHotkeys()
     {
-        var (hotkeys, audio, _, _, orch) = Create();
+        var (hotkeys, audio, _, _, _, orch) = Create();
         orch.Dispose();
 
         hotkeys.PressAndHold();

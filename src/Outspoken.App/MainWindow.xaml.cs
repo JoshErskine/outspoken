@@ -1,6 +1,8 @@
 using System.Media;
 using System.Windows;
+using Outspoken.Core;
 using Outspoken.Core.Audio;
+using Outspoken.Core.Cleanup;
 using Outspoken.Core.Hotkeys;
 using Outspoken.Core.Injection;
 using Outspoken.Core.Orchestration;
@@ -53,11 +55,34 @@ public partial class MainWindow : Window
                 }
             };
 
-            _orchestrator = new DictationOrchestrator(_hook, _audio, _transcriber, new InjectionEngine(new Win32InjectionEnvironment()));
+            // Cleanup client (spec §4): only if Josh has stored his API key via `set-key`.
+            // No key → raw transcripts, which still work — cleanup is an enhancement, not a gate.
+            ICleanupClient? cleanup = null;
+            var apiKey = ApiKeyStore.TryLoad();
+            if (apiKey is not null)
+            {
+                var anthropic = new AnthropicCleanupClient(apiKey);
+                cleanup = anthropic;
+                Log($"✓ cleanup enabled — {CoreInfo.CleanupModel}, {CoreInfo.CleanupTimeoutMs}ms timeout → raw fallback");
+
+                // Warm the HTTPS connection so the first dictation isn't ~11s cold (dogfood 2026-07-14).
+                _ = Task.Run(async () =>
+                {
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    await anthropic.WarmUpAsync();
+                    Log($"✓ cleanup connection warm ({sw.Elapsed.TotalSeconds:F1}s) — first dictation is now fast");
+                });
+            }
+            else
+            {
+                Log("• cleanup OFF — no API key stored. Run: Outspoken.App.exe set-key  (dictation still works, raw)");
+            }
+
+            _orchestrator = new DictationOrchestrator(_hook, _audio, _transcriber, new InjectionEngine(new Win32InjectionEnvironment()), cleanup);
             _orchestrator.StateChanged += OnStateChanged;
             _orchestrator.Completed += OnCompleted;
             _orchestrator.Failed += m => Log($"✗ {m}");
-            Log("✓ ready — hold Ctrl+Win anywhere and speak (+Shift = raw mode)");
+            Log("✓ ready — hold Ctrl+Win anywhere and speak (+Shift = raw mode, skips cleanup)");
         }
         catch (Exception ex)
         {
@@ -75,10 +100,11 @@ public partial class MainWindow : Window
     private void OnCompleted(DictationReport r)
     {
         SystemSounds.Asterisk.Play();
-        Log($"„ {r.Text}{(r.RawMode ? "  [RAW]" : "")}");
+        var tag = r.RawMode ? "  [RAW]" : r.WasCleaned ? "  [cleaned]" : $"  [raw fallback: {r.CleanupFallbackReason}]";
+        Log($"„ {r.Text}{tag}");
         Log($"⏱ release→done {r.TotalFromRelease.TotalSeconds:F2}s " +
-            $"(transcribe {r.TranscribeTime.TotalSeconds:F2}s + inject {r.InjectTime.TotalSeconds:F2}s) " +
-            $"| audio {r.AudioDuration.TotalSeconds:F1}s | {r.Outcome} | target ≤1.5s {(r.TotalFromRelease.TotalSeconds <= 1.5 ? "✅" : "❌")}");
+            $"(transcribe {r.TranscribeTime.TotalSeconds:F2}s + cleanup {r.CleanupTime.TotalSeconds:F2}s + inject {r.InjectTime.TotalSeconds:F2}s) " +
+            $"| audio {r.AudioDuration.TotalSeconds:F1}s | {r.Outcome}");
     }
 
     private void Log(string line)
