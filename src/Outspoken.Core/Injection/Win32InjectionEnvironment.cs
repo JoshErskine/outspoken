@@ -87,6 +87,30 @@ public sealed class Win32InjectionEnvironment : IInjectionEnvironment
         return ok;
     }
 
+    public void NeutralizeModifiers()
+    {
+        // Inject key-ups for any modifier the OS still sees as down. If the user is still
+        // physically holding it, their eventual release is a redundant up — harmless.
+        ushort[] modifiers = [VK_LWIN, VK_RWIN, VK_CONTROL, VK_SHIFT, VK_MENU];
+        var ups = new List<INPUT>();
+        foreach (var vk in modifiers)
+        {
+            if ((GetAsyncKeyState(vk) & 0x8000) != 0)
+            {
+                var input = new INPUT { type = INPUT_KEYBOARD };
+                input.ki.wVk = vk;
+                input.ki.dwFlags = KEYEVENTF_KEYUP;
+                ups.Add(input);
+            }
+        }
+
+        if (ups.Count > 0)
+        {
+            SendInput((uint)ups.Count, [.. ups], Marshal.SizeOf<INPUT>());
+            Thread.Sleep(20); // let the target app observe the modifier release before Ctrl+V
+        }
+    }
+
     public bool SendPaste()
     {
         var inputs = new INPUT[4];
@@ -133,6 +157,10 @@ public sealed class Win32InjectionEnvironment : IInjectionEnvironment
     private const uint KEYEVENTF_KEYUP = 2;
     private const ushort VK_CONTROL = 0x11;
     private const ushort VK_V = 0x56;
+    private const ushort VK_SHIFT = 0x10;
+    private const ushort VK_MENU = 0x12;
+    private const ushort VK_LWIN = 0x5B;
+    private const ushort VK_RWIN = 0x5C;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT
@@ -181,4 +209,7 @@ public sealed class Win32InjectionEnvironment : IInjectionEnvironment
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
 }

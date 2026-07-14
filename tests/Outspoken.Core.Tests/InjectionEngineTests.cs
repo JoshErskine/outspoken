@@ -40,6 +40,8 @@ public class InjectionEngineTests
             return true;
         }
 
+        public void NeutralizeModifiers() => Log.Add("neutralize");
+
         public bool SendPaste()
         {
             if (PasteThrows) throw new InvalidOperationException("SendInput broke");
@@ -61,7 +63,9 @@ public class InjectionEngineTests
         var result = await new InjectionEngine(env).InjectAsync("dictated text");
 
         Assert.Equal(InjectionOutcome.Injected, result.Outcome);
-        Assert.Equal(["preflight", "get", "set:dictated text", "paste", "settle", "set:user's original clipboard"], env.Log);
+        // "neutralize" before "paste": lingering combo modifiers (user still holding Win)
+        // must be released or Ctrl+V arrives as Ctrl+Win+V (dogfood bug 2026-07-14).
+        Assert.Equal(["preflight", "get", "set:dictated text", "neutralize", "paste", "settle", "set:user's original clipboard"], env.Log);
         Assert.Equal("user's original clipboard", env.Clipboard); // restored
     }
 

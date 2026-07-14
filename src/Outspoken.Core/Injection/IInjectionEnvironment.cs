@@ -18,6 +18,13 @@ public interface IInjectionEnvironment
     /// <summary>Writes text to the clipboard. False on failure.</summary>
     bool TrySetClipboardText(string text);
 
+    /// <summary>
+    /// Clears any modifier keys the OS still considers down (the user often still holds
+    /// Win/Ctrl from the push-to-talk combo when the paste fires ~1.7s after release —
+    /// without this, Ctrl+V arrives as Ctrl+Win+V and collides with OS chords).
+    /// </summary>
+    void NeutralizeModifiers();
+
     /// <summary>Sends Ctrl+V to the focused window. False when the send itself failed.</summary>
     bool SendPaste();
 

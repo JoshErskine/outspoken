@@ -41,6 +41,17 @@ public partial class MainWindow : Window
             var progress = new Progress<double>(p => Log($"  model download {p:P0}"));
             _transcriber = await WhisperTranscriber.CreateAsync(downloadProgress: progress);
             Log($"✓ model warm — load took {_transcriber.ModelLoadTime.TotalMilliseconds:F0} ms");
+            _transcriber.ProcessorRebuilt += reason => Log($"♻ whisper processor rebuilt ({reason})");
+
+            // A processor that lived through sleep comes back ~10x degraded (dogfood 2026-07-14).
+            Microsoft.Win32.SystemEvents.PowerModeChanged += (_, e) =>
+            {
+                if (e.Mode == Microsoft.Win32.PowerModes.Resume)
+                {
+                    _transcriber?.Rebuild();
+                    Log("♻ system resumed — whisper processor rebuild queued");
+                }
+            };
 
             _orchestrator = new DictationOrchestrator(_hook, _audio, _transcriber, new InjectionEngine(new Win32InjectionEnvironment()));
             _orchestrator.StateChanged += OnStateChanged;
