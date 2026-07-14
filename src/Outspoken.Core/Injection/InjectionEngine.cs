@@ -45,6 +45,7 @@ public sealed class InjectionEngine : IInjector
         bool pasted;
         try
         {
+            _env.NeutralizeModifiers();
             pasted = _env.SendPaste();
         }
         catch

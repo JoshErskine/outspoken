@@ -99,7 +99,11 @@ public sealed class DictationOrchestrator : IDisposable
 
             if (text.Length == 0)
             {
-                Failed?.Invoke("(silence — nothing transcribed)");
+                // 0.0s audio = the capture came back empty (mic/device problem, seen after
+                // system sleep); real silence still has duration. Different bugs — say which.
+                Failed?.Invoke(audio.Samples.Length == 0
+                    ? "(empty capture — mic delivered no audio)"
+                    : $"(silence — nothing transcribed from {audio.Duration.TotalSeconds:F1}s of audio)");
                 return;
             }
 

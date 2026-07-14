@@ -10,15 +10,27 @@ namespace Outspoken.Core.Transcription;
 /// The factory and processor are built once and reused, so the model is warm and
 /// key-release only pays inference. Transcriptions are serialized by a semaphore:
 /// a WhisperProcessor is not safe for concurrent use, and dictations are sequential anyway.
+///
+/// Dogfood finding (2026-07-14): a processor that lived through system sleep — especially
+/// one that was mid-inference when the lid closed — comes back ~10x degraded (28–40s per
+/// dictation vs ~3s in a fresh process). Two defenses: <see cref="Rebuild"/> for the app's
+/// power-resume handler, and a watchdog that rebuilds the processor after any absurdly
+/// slow transcription.
 /// </summary>
 public sealed class WhisperTranscriber : ITranscriber, IDisposable
 {
-    private readonly WhisperFactory _factory;
-    private readonly WhisperProcessor _processor;
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    /// <summary>A healthy transcription is ~1.5–3.5s (30s encoder window, AC vs battery). Past this, the processor is presumed damaged.</summary>
+    private static readonly TimeSpan WatchdogThreshold = TimeSpan.FromSeconds(10);
 
-    private WhisperTranscriber(WhisperFactory factory, WhisperProcessor processor, TimeSpan modelLoadTime)
+    private readonly string _modelPath;
+    private readonly WhisperFactory _factory;
+    private readonly SemaphoreSlim _lock = new(1, 1);
+    private WhisperProcessor _processor;
+    private bool _rebuildRequested;
+
+    private WhisperTranscriber(string modelPath, WhisperFactory factory, WhisperProcessor processor, TimeSpan modelLoadTime)
     {
+        _modelPath = modelPath;
         _factory = factory;
         _processor = processor;
         ModelLoadTime = modelLoadTime;
@@ -26,6 +38,9 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
 
     /// <summary>Cold-start cost, logged at startup — must stay off the dictation path.</summary>
     public TimeSpan ModelLoadTime { get; }
+
+    /// <summary>Raised when the watchdog or a resume rebuild replaced the processor (operator-facing diagnostics).</summary>
+    public event Action<string>? ProcessorRebuilt;
 
     /// <summary>Loads the model (downloading on first run) and warms the processor.</summary>
     public static async Task<WhisperTranscriber> CreateAsync(
@@ -37,14 +52,17 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
 
         var sw = Stopwatch.StartNew();
         var factory = WhisperFactory.FromPath(modelPath);
-        var processor = factory.CreateBuilder()
-            .WithLanguage("en")
-            .WithThreads(CoreInfo.WhisperThreadCap)
-            .Build();
+        var processor = BuildProcessor(factory);
         sw.Stop();
 
-        return new WhisperTranscriber(factory, processor, sw.Elapsed);
+        return new WhisperTranscriber(modelPath, factory, processor, sw.Elapsed);
     }
+
+    /// <summary>
+    /// Requests a processor rebuild before the next transcription. Call on system resume:
+    /// a processor that lived through sleep is not trusted.
+    /// </summary>
+    public void Rebuild() => _rebuildRequested = true;
 
     public async Task<string> TranscribeAsync(CapturedAudio audio, CancellationToken cancellationToken = default)
     {
@@ -56,9 +74,18 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
         await _lock.WaitAsync(cancellationToken);
         try
         {
+            if (_rebuildRequested)
+                ReplaceProcessor("system resume");
+
+            var sw = Stopwatch.StartNew();
             var text = new System.Text.StringBuilder();
             await foreach (var segment in _processor.ProcessAsync(audio.Samples, cancellationToken))
                 text.Append(segment.Text);
+            sw.Stop();
+
+            if (sw.Elapsed > WatchdogThreshold)
+                ReplaceProcessor($"watchdog: transcription took {sw.Elapsed.TotalSeconds:F0}s");
+
             return text.ToString().Trim();
         }
         finally
@@ -66,6 +93,27 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
             _lock.Release();
         }
     }
+
+    private void ReplaceProcessor(string reason)
+    {
+        _rebuildRequested = false;
+        try
+        {
+            _processor.Dispose();
+        }
+        catch
+        {
+            // A damaged processor may fail its own dispose; the replacement matters more.
+        }
+        _processor = BuildProcessor(_factory);
+        ProcessorRebuilt?.Invoke(reason);
+    }
+
+    private static WhisperProcessor BuildProcessor(WhisperFactory factory) =>
+        factory.CreateBuilder()
+            .WithLanguage("en")
+            .WithThreads(CoreInfo.WhisperThreadCap)
+            .Build();
 
     public void Dispose()
     {
