@@ -58,6 +58,15 @@ public partial class PillWindow : Window
             Visual.ShowTag("raw");
     }
 
+    /// <summary>Nothing was spoken — fade the pill out immediately, no message, no lingering Processing.</summary>
+    public void Dismiss()
+    {
+        if (_mode == PillMode.Hidden)
+            return;
+        SetMode(PillMode.Done); // routes through the fade-out path without an amber pulse
+        FadeOutAndHide();
+    }
+
     public void ShowClipboard() => ShowMessage("Copied — press Ctrl+V", OverlayTheme.AmberDeep, 2500);
 
     public void ShowError(string message) => ShowMessage(message, OverlayTheme.ErrorRed, 2200);

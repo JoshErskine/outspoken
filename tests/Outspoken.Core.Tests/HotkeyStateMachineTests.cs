@@ -13,6 +13,37 @@ public class HotkeyStateMachineTests
     private static HotkeyStateMachine Create() => new(HotkeyCombo.Default);
 
     [Fact]
+    public void StaleKeyInSet_ButNotPhysicallyDown_DoesNotFalselyTrigger()
+    {
+        // Simulate a missed Win keyup: Win is "tracked" down but physically up.
+        // Pressing Ctrl alone must NOT complete the Ctrl+Win chord (the Ctrl+V-hijack bug).
+        var physicallyDown = new HashSet<ChordKey> { ChordKey.Ctrl }; // Win is NOT physically down
+        var sm = new HotkeyStateMachine(HotkeyCombo.Default, isPhysicallyDown: physicallyDown.Contains);
+        var started = false;
+        sm.HoldStarted += () => started = true;
+
+        sm.Process(VK_LWIN, isDown: true);      // Win enters the tracked set…
+        physicallyDown.Remove(ChordKey.Win);    // …but its keyup was missed (physically up)
+        sm.Process(VK_LCONTROL, isDown: true);  // lone Ctrl
+
+        Assert.False(started, "Lone Ctrl must not complete the chord when Win isn't physically held.");
+    }
+
+    [Fact]
+    public void AllKeysPhysicallyDown_TriggersNormally()
+    {
+        var down = new HashSet<ChordKey> { ChordKey.Ctrl, ChordKey.Win };
+        var sm = new HotkeyStateMachine(HotkeyCombo.Default, isPhysicallyDown: down.Contains);
+        var started = false;
+        sm.HoldStarted += () => started = true;
+
+        sm.Process(VK_LCONTROL, true);
+        sm.Process(VK_LWIN, true);
+
+        Assert.True(started);
+    }
+
+    [Fact]
     public void FullChord_StartsHold_AndCompletingDownIsSuppressed()
     {
         var sm = Create();

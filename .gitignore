@@ -18,9 +18,13 @@ models/
 # audio scratch (benchmark fixtures are committed deliberately, nothing else)
 *.wav
 !tests/fixtures/*.wav
+!src/Outspoken.App/Assets/*.wav
 
 # local bridge to planning vault (contains personal paths) - never public
 CLAUDE.md
 
 # fixture transcripts (personal content, local verify only)
 tools/WhisperBenchmark/fixtures/*.txt
+
+# Audio reference samples — local only, used to tune the cue synth; never committed
+docs/audio-refs/
