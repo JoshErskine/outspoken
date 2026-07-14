@@ -1,7 +1,8 @@
 # Outspoken
 
 **Dictation without limits.** A Windows push-to-talk dictation tool: hold a hotkey anywhere, speak, release — your words land at the cursor, cleaned up. Speech-to-text runs **locally** ([Whisper](https://github.com/openai/whisper) via whisper.cpp), so your voice never leaves your machine and there are no word caps. A fast LLM pass tidies the transcript (fillers, false starts, punctuation, homophones) without changing what you said.
-
+<br>
+<br>
 <p align="center">
   <img src="docs/images/pill-listening.png" width="360" alt="Outspoken listening overlay — a cream pill with an amber thread-waveform" />
 </p>
