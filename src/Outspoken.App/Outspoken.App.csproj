@@ -1,4 +1,16 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- For the system-tray NotifyIcon (System.Windows.Forms) + icon drawing (System.Drawing). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Outspoken.Core\Outspoken.Core.csproj" />
@@ -10,14 +22,12 @@
     <EmbeddedResource Include="Assets\cue-stop.wav" LogicalName="cue-stop.wav" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <UseWPF>true</UseWPF>
-    <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
-    <SelfContained>false</SelfContained>
-  </PropertyGroup>
+  <!-- WinForms is a WPF app here — don't globally import System.Windows.Forms / System.Drawing;
+       they collide with WPF types (Color, Point, Size, UserControl…). App.xaml.cs imports them
+       explicitly where the tray icon needs them. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
 
 </Project>

@@ -1,0 +1,68 @@
+<Window x:Class="Outspoken.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Outspoken — Settings" Height="560" Width="440"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Background="#FAF8F3" FontFamily="Segoe UI" Foreground="#1F1F1D">
+  <Window.Resources>
+    <Style TargetType="TextBlock" x:Key="GroupLabel">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#9A897B" />
+      <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+    <Style TargetType="TextBlock" x:Key="Hint">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="#9A897B" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,3,0,0" />
+    </Style>
+    <Style TargetType="CheckBox">
+      <Setter Property="Margin" Value="0,6,0,0" />
+      <Setter Property="FontSize" Value="13" />
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="26,22,26,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="Outspoken" FontSize="20" FontWeight="SemiBold" />
+      <TextBlock Text="Dictation without limits" Foreground="#9A897B" FontSize="12" Margin="0,0,0,4" />
+      <Border Height="1" Background="#E8E2D6" Margin="0,10,0,14" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="1">
+      <!-- API key -->
+      <TextBlock Text="ANTHROPIC API KEY" Style="{StaticResource GroupLabel}" />
+      <TextBlock x:Name="KeyStatus" FontSize="12" Margin="0,0,0,6" />
+      <PasswordBox x:Name="ApiKeyBox" Padding="6,5" FontSize="12" />
+      <TextBlock Style="{StaticResource Hint}"
+                 Text="Stored encrypted on this device (Windows DPAPI). Leave blank to keep the current key. Without a key, dictation still works in raw mode." />
+
+      <!-- Dictation -->
+      <TextBlock Text="DICTATION" Style="{StaticResource GroupLabel}" Margin="0,20,0,6" />
+      <TextBlock FontSize="13">Hotkey: <Run FontWeight="SemiBold">Ctrl + Win</Run>  ·  hold to talk, +Shift for raw</TextBlock>
+      <CheckBox x:Name="RawDefaultCheck" Content="Skip cleanup by default (raw transcription)" />
+
+      <!-- Feedback -->
+      <TextBlock Text="FEEDBACK" Style="{StaticResource GroupLabel}" Margin="0,20,0,6" />
+      <CheckBox x:Name="CuesCheck" Content="Play soft start / stop sounds" />
+
+      <!-- Startup -->
+      <TextBlock Text="STARTUP" Style="{StaticResource GroupLabel}" Margin="0,20,0,6" />
+      <CheckBox x:Name="LaunchCheck" Content="Launch Outspoken when I sign in to Windows" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button x:Name="CancelButton" Content="Cancel" Width="88" Height="32" Margin="0,0,10,0"
+              Background="Transparent" BorderBrush="#D8CFC0" Foreground="#1F1F1D" Click="OnCancel" />
+      <Button x:Name="SaveButton" Content="Save" Width="88" Height="32"
+              Background="#C2571B" Foreground="White" BorderThickness="0" Click="OnSave" />
+    </StackPanel>
+  </Grid>
+</Window>
