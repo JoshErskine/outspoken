@@ -9,7 +9,7 @@ namespace Outspoken.Core.Cleanup;
 /// call in the whole app). Honors the never-block invariant: a 3s timeout, offline, or any
 /// API error resolves to the raw transcript rather than throwing (spec §4).
 /// </summary>
-public sealed class AnthropicCleanupClient : ICleanupClient
+public sealed class AnthropicCleanupClient : ICleanupClient, IDisposable
 {
     private readonly AnthropicClient _client;
     private readonly TimeSpan _timeout;
@@ -19,6 +19,8 @@ public sealed class AnthropicCleanupClient : ICleanupClient
         _client = new AnthropicClient { ApiKey = apiKey };
         _timeout = timeout ?? TimeSpan.FromMilliseconds(CoreInfo.CleanupTimeoutMs);
     }
+
+    public void Dispose() => (_client as IDisposable)?.Dispose();
 
     /// <summary>
     /// Establishes the HTTPS connection and pays the first-call handshake + JIT cost up front,

@@ -41,7 +41,7 @@ public sealed class DictationOrchestrator : IDisposable
     private readonly IAudioCaptureService _audio;
     private readonly ITranscriber _transcriber;
     private readonly IInjector _injector;
-    private readonly ICleanupClient? _cleanup;
+    private ICleanupClient? _cleanup;
 
     /// <param name="cleanup">Optional. Null (no key configured, or Shift-held raw runs) delivers raw transcripts.</param>
     public DictationOrchestrator(IHotkeySource hotkeys, IAudioCaptureService audio, ITranscriber transcriber, IInjector injector, ICleanupClient? cleanup = null)
@@ -110,8 +110,15 @@ public sealed class DictationOrchestrator : IDisposable
         _ = ProcessAsync(audio, hold.RawMode); // fire-and-forget; all exits handled inside
     }
 
+    /// <summary>Skip cleanup for every dictation regardless of the Shift modifier (the raw-mode-default setting).</summary>
+    public bool ForceRawMode { get; set; }
+
+    /// <summary>Swap the cleanup client at runtime (e.g. after the API key is set/changed in settings). Null = raw.</summary>
+    public void SetCleanup(ICleanupClient? cleanup) => _cleanup = cleanup;
+
     private async Task ProcessAsync(CapturedAudio audio, bool rawMode)
     {
+        var raw = rawMode || ForceRawMode;
         var total = Stopwatch.StartNew();
         try
         {
@@ -126,11 +133,11 @@ public sealed class DictationOrchestrator : IDisposable
                 return;
             }
 
-            // Cleanup pass (spec §4). Raw mode (Shift held) or no configured client skips it;
-            // the cleanup client itself never throws — timeout/offline/error yields raw text.
+            // Cleanup pass (spec §4). Raw mode (Shift or the default setting) or no configured
+            // client skips it; the cleanup client itself never throws — timeout/offline → raw text.
             var cleanupWatch = Stopwatch.StartNew();
-            var cleanup = (rawMode || _cleanup is null)
-                ? CleanupResult.Raw(text, rawMode ? "raw mode (Shift)" : "no cleanup client")
+            var cleanup = (raw || _cleanup is null)
+                ? CleanupResult.Raw(text, raw ? "raw mode" : "no cleanup client")
                 : await _cleanup.CleanAsync(text);
             cleanupWatch.Stop();
 
@@ -140,7 +147,7 @@ public sealed class DictationOrchestrator : IDisposable
             total.Stop();
 
             Completed?.Invoke(new DictationReport(
-                result.Text, result.Outcome, rawMode, cleanup.WasCleaned,
+                result.Text, result.Outcome, raw, cleanup.WasCleaned,
                 audio.Duration, transcribeWatch.Elapsed, cleanupWatch.Elapsed, injectWatch.Elapsed, total.Elapsed,
                 cleanup.FallbackReason));
         }
