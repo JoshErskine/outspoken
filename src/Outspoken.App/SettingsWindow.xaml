@@ -142,7 +142,8 @@
   <!-- Rounded window shell. The 22px transparent margin gives the drop shadow room to render as a
        soft rounded halo, and guarantees the rounded corners are inset from the (square) window edge
        so SizeToContent can never clip the rounded bottom into a straight line. -->
-  <Border CornerRadius="18" Background="#F7F3EC" BorderBrush="#E7E0D3" BorderThickness="1" Margin="22">
+  <Border CornerRadius="18" Background="#F7F3EC" BorderBrush="#E7E0D3" BorderThickness="1" Margin="22"
+          MouseLeftButtonDown="OnWindowDrag">
     <Border.Effect>
       <DropShadowEffect Color="#000000" Opacity="0.28" BlurRadius="26" ShadowDepth="3" Direction="270" />
     </Border.Effect>
@@ -154,8 +155,9 @@
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
 
-      <!-- Header (draggable) -->
-      <Grid Grid.Row="0" x:Name="HeaderBar" Background="Transparent" MouseLeftButtonDown="OnHeaderDrag">
+      <!-- Header. The whole window is draggable (handler on the root Border); interactive
+           controls mark their clicks handled, so they still work. -->
+      <Grid Grid.Row="0" x:Name="HeaderBar" Background="Transparent">
         <StackPanel Orientation="Horizontal">
           <!-- Brand mark: "Mic & Halo" (injected from BrandMark; the app-icon squircle variant) -->
           <ContentControl x:Name="LogoHost" Width="42" Height="42" VerticalAlignment="Center" Margin="0,0,12,0" />
