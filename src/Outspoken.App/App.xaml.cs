@@ -30,6 +30,10 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Keep this process off Windows' efficiency mode - an idle tray app gets throttled, and the
+        // first Whisper transcription after idle otherwise crawls (T12). Applies to every entry path.
+        ProcessPerformance.DisableThrottling();
+
         if (e.Args.Length > 0 && e.Args[0].Equals("set-key", StringComparison.OrdinalIgnoreCase))
         {
             RunSetKey();
@@ -48,6 +52,20 @@ public partial class App : Application
         if (e.Args.Length > 1 && e.Args[0].Equals("appicon", StringComparison.OrdinalIgnoreCase))
         {
             WriteAppIcon(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.Length > 0 && e.Args[0].Equals("latency", StringComparison.OrdinalIgnoreCase))
+        {
+            // latency [outputFile] [runs] - measures transcription vs the spec §3 budget (T12).
+            var outputPath = e.Args.Length > 1 ? e.Args[1] : Path.Combine(Path.GetTempPath(), "outspoken-latency.md");
+            var runs = e.Args.Length > 2 && int.TryParse(e.Args[2], out var n) ? n : 5;
+            var idle = e.Args.Length > 3 && int.TryParse(e.Args[3], out var s) ? s : 0;
+            // Run off the dispatcher thread: blocking it here while TranscribeAsync's awaits try to
+            // resume on the WPF SynchronizationContext would deadlock. Task.Run gives the async work
+            // a thread-pool context with no captured UI scheduler.
+            Task.Run(() => LatencyHarness.RunAsync(outputPath, runs, idle)).GetAwaiter().GetResult();
             Shutdown();
             return;
         }
