@@ -109,11 +109,20 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
         ProcessorRebuilt?.Invoke(reason);
     }
 
-    private static WhisperProcessor BuildProcessor(WhisperFactory factory) =>
-        factory.CreateBuilder()
+    private static WhisperProcessor BuildProcessor(WhisperFactory factory)
+    {
+        // Decode tuning (T12): dictation is a single utterance, so take one segment with no
+        // cross-segment context, and greedy with best-of 1 (a single decode pass) instead of the
+        // default best-of resampling. Cuts decode compute with no measured accuracy loss.
+        var greedy = (GreedySamplingStrategyBuilder)factory.CreateBuilder()
             .WithLanguage("en")
             .WithThreads(CoreInfo.WhisperThreadCap)
-            .Build();
+            .WithSingleSegment()
+            .WithNoContext()
+            .WithGreedySamplingStrategy();
+        greedy.WithBestOf(1);
+        return greedy.ParentBuilder.Build();
+    }
 
     public void Dispose()
     {

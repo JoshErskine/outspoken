@@ -10,8 +10,9 @@ public class CoreInfoTests
     }
 
     [Fact]
-    public void LatencyCeiling_IsTwoSeconds()
+    public void LatencyCeiling_MatchesRevisedBudget()
     {
-        Assert.Equal(2000, CoreInfo.LatencyCeilingMs);
+        // Revised from 2000 after T12 measured real hardware (ADR-002). Cleaned-dictation ceiling.
+        Assert.Equal(3250, CoreInfo.LatencyCeilingMs);
     }
 }

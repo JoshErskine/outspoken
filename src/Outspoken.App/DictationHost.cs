@@ -131,6 +131,9 @@ public sealed class DictationHost : IDisposable
         });
         var tag = r.RawMode ? "[raw]" : r.WasCleaned ? "[cleaned]" : "[raw fallback]";
         Emit($"„ {r.Text} {tag} ({r.TotalFromRelease.TotalSeconds:F2}s)");
+        // Per-segment budget breakdown (spec §3) - the live half of the T12 latency harness.
+        foreach (var line in LatencyBudget.Evaluate(r))
+            Emit($"    {line.Name,-12} {line.Measured.TotalSeconds,5:F2}s / {line.Limit.TotalSeconds:F2}s  {(line.Over ? "OVER" : "ok")}");
     }
 
     private static void OnUi(Action action) => Application.Current.Dispatcher.BeginInvoke(action);
