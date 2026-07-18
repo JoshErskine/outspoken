@@ -39,7 +39,55 @@ public static class ShowcaseRenderer
         // Hero "states board" on a warm-charcoal presentation backdrop.
         SavePng(BuildBoard(shots), Path.Combine(outputDir, "overlay-states.png"));
 
-        Console.WriteLine($"Wrote {shots.Length + 1} images to {outputDir}");
+        // Brand lockup (mark + wordmark) on the same warm-charcoal backdrop.
+        SavePng(BuildBrandLockup(), Path.Combine(outputDir, "logo.png"));
+
+        Console.WriteLine($"Wrote {shots.Length + 2} images to {outputDir}");
+    }
+
+    /// <summary>The brand lockup: the "Mic &amp; Halo" squircle mark beside the wordmark, on the
+    /// warm-charcoal presentation backdrop — the real <see cref="BrandMark"/>, not a mockup.</summary>
+    private static FrameworkElement BuildBrandLockup()
+    {
+        var mark = new Viewbox
+        {
+            Width = 104,
+            Height = 104,
+            Child = BrandMark.CreateVisual(withGround: true),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24, 0, 0, 0) };
+        words.Children.Add(new TextBlock
+        {
+            Text = "Outspoken",
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 46,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xF1, 0xE9, 0xDC)),
+        });
+        words.Children.Add(new TextBlock
+        {
+            Text = "Dictation without limits",
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 17,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xB0, 0xA4, 0x91)),
+            Margin = new Thickness(2, 4, 0, 0),
+        });
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(mark);
+        row.Children.Add(words);
+
+        var board = new Border
+        {
+            Padding = new Thickness(56, 44, 72, 44),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(0x24, 0x22, 0x1F), Color.FromRgb(0x1A, 0x18, 0x16), 90),
+            Child = row,
+        };
+        Layout(board);
+        return board;
     }
 
     private static FrameworkElement BuildPill(Shot shot)

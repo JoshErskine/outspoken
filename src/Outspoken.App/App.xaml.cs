@@ -25,6 +25,9 @@ public partial class App : Application
     /// <summary>True once the user chose Quit — lets the diagnostics window actually close.</summary>
     internal bool Quitting { get; private set; }
 
+    // Single-instance guard: a pinned/autostart tray app must never run twice (two hooks = chaos).
+    private System.Threading.Mutex? _singleInstance;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         if (e.Args.Length > 0 && e.Args[0].Equals("set-key", StringComparison.OrdinalIgnoreCase))
@@ -38,6 +41,21 @@ public partial class App : Application
         {
             var outputDir = e.Args.Length > 1 ? e.Args[1] : Directory.GetCurrentDirectory();
             ShowcaseRenderer.RenderAll(outputDir);
+            Shutdown();
+            return;
+        }
+
+        if (e.Args.Length > 1 && e.Args[0].Equals("appicon", StringComparison.OrdinalIgnoreCase))
+        {
+            WriteAppIcon(e.Args[1]);
+            Shutdown();
+            return;
+        }
+
+        // If Outspoken is already running, don't start a second copy — just exit quietly.
+        _singleInstance = new System.Threading.Mutex(initiallyOwned: true, "Outspoken.SingleInstance", out var isNew);
+        if (!isNew)
+        {
             Shutdown();
             return;
         }
@@ -87,19 +105,58 @@ public partial class App : Application
 
     private static void OnUi(Action action) => Application.Current.Dispatcher.BeginInvoke(action);
 
-    /// <summary>Draws the amber-dot tray icon directly (no asset, no async conversion).</summary>
+    /// <summary>The brand-mark tray icon — the same "Mic &amp; Halo" mark as the app icon and
+    /// Settings logo. Built from a real PNG-framed .ico (not GetHicon, whose 1-bit mask squares off
+    /// the rounded corners on light backgrounds) so the full alpha — including the soft squircle
+    /// corners — is preserved.</summary>
     private static Icon BuildTrayIcon()
     {
-        using var bmp = new Bitmap(32, 32);
-        using (var g = Graphics.FromImage(bmp))
-        {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.Clear(System.Drawing.Color.Transparent);
-            using var brush = new SolidBrush(System.Drawing.Color.FromArgb(0xC2, 0x57, 0x1B));
-            g.FillEllipse(brush, 4, 4, 24, 24);
-        }
-        return Icon.FromHandle(bmp.GetHicon());
+        using var ms = new MemoryStream();
+        WriteIco(ms, [32, 16]);
+        ms.Position = 0;
+        return new Icon(ms);
     }
+
+    /// <summary>Writes the multi-size app .ico to a file.</summary>
+    private static void WriteAppIcon(string path)
+    {
+        using var fs = File.Create(path);
+        WriteIco(fs, [256, 64, 48, 32, 16]);
+    }
+
+    /// <summary>
+    /// Writes a multi-size .ico with PNG-embedded frames of the brand mark. PNG frames preserve the
+    /// exact colours and the full alpha channel (unlike GetHicon+Icon.Save, which flattens
+    /// anti-aliased edges to a 1-bit mask). Windows Vista+ reads PNG icon frames.
+    /// </summary>
+    private static void WriteIco(Stream stream, int[] sizes)
+    {
+        var frames = sizes.Select(sz => BrandMark.RenderPng(sz, withGround: true)).ToList();
+
+        var w = new BinaryWriter(stream);
+        w.Write((short)0);            // reserved
+        w.Write((short)1);            // type: icon
+        w.Write((short)frames.Count); // image count
+
+        var offset = 6 + 16 * frames.Count;
+        for (var i = 0; i < frames.Count; i++)
+        {
+            var dim = sizes[i] >= 256 ? 0 : sizes[i]; // 0 means 256 in the ICO spec
+            w.Write((byte)dim);       // width
+            w.Write((byte)dim);       // height
+            w.Write((byte)0);         // palette count
+            w.Write((byte)0);         // reserved
+            w.Write((short)1);        // colour planes
+            w.Write((short)32);       // bits per pixel
+            w.Write(frames[i].Length);
+            w.Write(offset);
+            offset += frames[i].Length;
+        }
+        foreach (var frame in frames)
+            w.Write(frame);
+        w.Flush();
+    }
+
 
     protected override void OnExit(ExitEventArgs e)
     {

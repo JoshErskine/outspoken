@@ -23,6 +23,9 @@ public partial class SettingsWindow : Window
         _store = store;
         _host = host;
 
+        // The app-icon squircle mark (cream ground) reads cleanly against the settings surface.
+        LogoHost.Content = Overlay.BrandMark.CreateVisual(withGround: true);
+
         var settings = store.Load();
         CuesCheck.IsChecked = settings.AudioCuesEnabled;
         RawDefaultCheck.IsChecked = settings.RawModeDefault;
@@ -70,4 +73,10 @@ public partial class SettingsWindow : Window
     }
 
     private void OnCancel(object sender, RoutedEventArgs e) => Close();
+
+    private void OnHeaderDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
+            DragMove();
+    }
 }
