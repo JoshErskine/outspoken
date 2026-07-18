@@ -28,6 +28,11 @@ public partial class App : Application
     // Single-instance guard: a pinned/autostart tray app must never run twice (two hooks = chaos).
     private System.Threading.Mutex? _singleInstance;
 
+    // A later launch (clicking the pinned taskbar icon, or re-running the exe) signals this named
+    // event so the already-running instance surfaces its UI instead of the copy dying silently.
+    private System.Threading.EventWaitHandle? _showRequested;
+    private const string ShowRequestName = "Outspoken.ShowRequested";
+
     protected override void OnStartup(StartupEventArgs e)
     {
         // Keep this process off Windows' efficiency mode - an idle tray app gets throttled, and the
@@ -70,10 +75,16 @@ public partial class App : Application
             return;
         }
 
-        // If Outspoken is already running, don't start a second copy — just exit quietly.
+        // If Outspoken is already running, don't start a second copy - instead ask the running
+        // instance to open its window (so a pinned-taskbar click or re-launch surfaces the UI), then exit.
         _singleInstance = new System.Threading.Mutex(initiallyOwned: true, "Outspoken.SingleInstance", out var isNew);
         if (!isNew)
         {
+            if (System.Threading.EventWaitHandle.TryOpenExisting(ShowRequestName, out var running))
+            {
+                running.Set();
+                running.Dispose();
+            }
             Shutdown();
             return;
         }
@@ -85,8 +96,34 @@ public partial class App : Application
         _host.Log += line => _diagnostics.Append(line);
         _tray = BuildTray();
 
+        // Primary instance: listen for later launches asking to surface the UI.
+        _showRequested = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset, ShowRequestName);
+        StartShowListener();
+
         var settings = _settingsStore.Load();
         _ = InitAsync(settings);
+    }
+
+    /// <summary>Background wait on <see cref="_showRequested"/>; each signal opens Settings on the UI thread.</summary>
+    private void StartShowListener()
+    {
+        var thread = new System.Threading.Thread(() =>
+        {
+            try
+            {
+                while (_showRequested!.WaitOne())
+                    Dispatcher.BeginInvoke(new Action(OpenSettings));
+            }
+            catch (ObjectDisposedException)
+            {
+                // App is shutting down and disposed the handle — stop listening.
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "Outspoken.ShowListener",
+        };
+        thread.Start();
     }
 
     private async Task InitAsync(AppSettings settings)
@@ -184,6 +221,8 @@ public partial class App : Application
             _tray.Visible = false;
             _tray.Dispose();
         }
+        _showRequested?.Dispose(); // unblocks the listener thread's WaitOne
+        _singleInstance?.Dispose();
         base.OnExit(e);
     }
 

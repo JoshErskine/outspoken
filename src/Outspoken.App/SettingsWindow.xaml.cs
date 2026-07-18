@@ -74,7 +74,10 @@ public partial class SettingsWindow : Window
 
     private void OnCancel(object sender, RoutedEventArgs e) => Close();
 
-    private void OnHeaderDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    // Drag the window from anywhere that isn't an interactive control. Buttons, toggles, and the
+    // key box mark their own mouse-down handled, so the event only bubbles here from inert areas
+    // (header, card backgrounds, section labels, gaps).
+    private void OnWindowDrag(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
             DragMove();
