@@ -28,3 +28,7 @@ tools/WhisperBenchmark/fixtures/*.txt
 
 # Audio reference samples — local only, used to tune the cue synth; never committed
 docs/audio-refs/
+
+# Logo/brand design working files (SVG source, brainstorm exports, zips) — local only.
+# The canonical mark lives in code (Overlay/BrandMark.cs) + the generated app.ico.
+docs/logo-refs/

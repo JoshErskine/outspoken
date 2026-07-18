@@ -1,5 +1,9 @@
 # Outspoken
 
+<p align="center">
+  <img src="docs/images/logo.png" width="460" alt="Outspoken — Dictation without limits" />
+</p>
+
 **Dictation without limits.** A Windows push-to-talk dictation tool: hold a hotkey anywhere, speak, release — your words land at the cursor, cleaned up. Speech-to-text runs **locally** ([Whisper](https://github.com/openai/whisper) via whisper.cpp), so your voice never leaves your machine and there are no word caps. A fast LLM pass tidies the transcript (fillers, false starts, punctuation, homophones) without changing what you said.
 <br>
 <br>
@@ -37,6 +41,14 @@ The listening pill is the product’s visible signature — a small, calm, paper
 | **Clipboard fallback** | “Copied — press Ctrl+V” when the target isn’t editable. |
 | **No speech** | A quiet notice — never a dialog box. |
 
+## Tray &amp; settings
+
+Outspoken lives in the system tray — always ready, no window in the way. A single settings panel holds everything: your Anthropic key (encrypted on-device via Windows DPAPI, never shown in plaintext), the push-to-talk hotkey, raw-by-default, sound cues, and launch-at-login.
+
+<p align="center">
+  <img src="docs/images/settings.png" width="380" alt="Outspoken settings — a rounded cream panel with the brand mark, an API-key field, and toggles for raw mode, sound cues, and launch at login" />
+</p>
+
 ## Principles
 
 - **Private by architecture:** audio is memory-only; the only network call is the text-cleanup request on your own API key. No telemetry, no accounts, no stored dictations.
@@ -46,7 +58,7 @@ The listening pill is the product’s visible signature — a small, calm, paper
 
 ## Status
 
-🚧 Active build, staged pipeline (spec → ADRs → plan → build). Working today: hotkey → local capture → Whisper transcription → LLM cleanup → text at cursor, with the overlay above. Coming next: audio cues, tray + settings + launch-at-login, then a signed multi-arch (x64 + ARM64) installer.
+🚧 Active build, staged pipeline (spec → ADRs → plan → build). Working today: hotkey → local capture → Whisper transcription → LLM cleanup → text at cursor, with the overlay, audio cues, and a system-tray app (settings, API-key box, launch-at-login) above. Coming next: latency tuning and hardening, then a signed multi-arch (x64 + ARM64) installer.
 
 ## Setup (developer build)
 

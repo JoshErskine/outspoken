@@ -10,6 +10,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
+    <!-- Brand-mark icon for the exe, windows, and taskbar. -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
