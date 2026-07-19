@@ -60,8 +60,17 @@ public sealed class DictationOrchestrator : IDisposable
     public event Action<DictationState>? StateChanged;
     public event Action<DictationReport>? Completed;
 
-    /// <summary>A stage failed. The string is operator-facing; dictation text (when any survived) rode the injection result.</summary>
-    public event Action<string>? Failed;
+    /// <summary>A stage failed with no text to deliver. The kind selects the overlay message; the detail is operator-facing.</summary>
+    public event Action<DictationFailure>? Failed;
+
+    /// <summary>
+    /// A transcription that runs past this is treated as hung (not merely slow) and cancelled →
+    /// <see cref="DictationFailureKind.Transcription"/>, so the pill can never freeze in Processing
+    /// (the residual hazard from the 2026-07-19 battery investigation). Well above the worst
+    /// legitimate cold transcribe (~7.5s pre-T12-fix); the transcriber's own 10s watchdog handles
+    /// the slow-but-completes case, so this only ever fires on a true stall.
+    /// </summary>
+    public TimeSpan TranscriptionStallTimeout { get; set; } = TimeSpan.FromSeconds(15);
 
     /// <summary>Nothing was spoken (silent hold, quick tap, or Whisper blank annotation). Dismiss quietly — no paste, no error.</summary>
     public event Action? NoSpeech;
@@ -78,7 +87,7 @@ public sealed class DictationOrchestrator : IDisposable
         }
         catch (Exception ex)
         {
-            Failed?.Invoke($"mic start failed: {ex.Message}");
+            Failed?.Invoke(new DictationFailure(DictationFailureKind.Microphone, $"mic start failed: {ex.Message}"));
             SetState(DictationState.Idle);
         }
     }
@@ -92,7 +101,7 @@ public sealed class DictationOrchestrator : IDisposable
         }
         catch (Exception ex)
         {
-            Failed?.Invoke($"capture failed: {ex.Message}");
+            Failed?.Invoke(new DictationFailure(DictationFailureKind.Microphone, $"capture failed: {ex.Message}"));
             SetState(DictationState.Idle);
             return;
         }
@@ -123,7 +132,22 @@ public sealed class DictationOrchestrator : IDisposable
         try
         {
             var transcribeWatch = Stopwatch.StartNew();
-            var text = await _transcriber.TranscribeAsync(audio);
+            string text;
+            using (var stallCts = new CancellationTokenSource(TranscriptionStallTimeout))
+            {
+                try
+                {
+                    text = await _transcriber.TranscribeAsync(audio, stallCts.Token);
+                }
+                catch (OperationCanceledException) when (stallCts.IsCancellationRequested)
+                {
+                    // A hung transcription — cancelled by the watchdog. Degrade to an overlay error
+                    // instead of leaving the pill frozen in Processing forever.
+                    Failed?.Invoke(new DictationFailure(DictationFailureKind.Transcription,
+                        $"transcription stalled (>{TranscriptionStallTimeout.TotalSeconds:F0}s)"));
+                    return;
+                }
+            }
             transcribeWatch.Stop();
 
             // Whisper returns "[BLANK_AUDIO]" / "(silence)" etc. for near-silent input — never paste those.
@@ -153,7 +177,7 @@ public sealed class DictationOrchestrator : IDisposable
         }
         catch (Exception ex)
         {
-            Failed?.Invoke($"dictation failed: {ex.Message}");
+            Failed?.Invoke(new DictationFailure(DictationFailureKind.Transcription, $"dictation failed: {ex.Message}"));
         }
         finally
         {

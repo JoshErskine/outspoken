@@ -61,17 +61,28 @@ public sealed class DictationHost : IDisposable
             _orchestrator.StateChanged += OnStateChanged;
             _orchestrator.Completed += OnCompleted;
             _orchestrator.NoSpeech += () => { OnUi(() => _pill.Dismiss()); Emit("(no speech — dismissed)"); };
-            _orchestrator.Failed += m => { OnUi(() => _pill.ShowError("dictation error")); Emit($"error: {m}"); _errorLog.Write($"dictation error: {m}"); };
+            _orchestrator.Failed += f => { OnUi(() => _pill.ShowError(MessageFor(f.Kind))); Emit($"error: {f.Detail}"); _errorLog.Write($"dictation error: {f.Detail}"); };
 
             ReloadCleanup();
             Emit("ready");
         }
         catch (Exception ex)
         {
+            // Model download/load or transcriber build failed — the orchestrator never came up, so
+            // the hotkey would silently do nothing. Surface it (error matrix #3) instead of a dead app.
             Emit($"init failed: {ex.Message}");
             _errorLog.Write($"init failed: {ex.Message}");
+            OnUi(() => _pill.ShowError("Model not ready"));
         }
     }
+
+    /// <summary>Short plain-language overlay text per failure kind (error matrix, option A — Josh 2026-07-19).</summary>
+    private static string MessageFor(DictationFailureKind kind) => kind switch
+    {
+        DictationFailureKind.Microphone => "No microphone",
+        DictationFailureKind.Transcription => "Dictation failed",
+        _ => "Dictation failed",
+    };
 
     /// <summary>Re-reads the DPAPI key and (re)builds the cleanup client — call after the key changes.</summary>
     public void ReloadCleanup()

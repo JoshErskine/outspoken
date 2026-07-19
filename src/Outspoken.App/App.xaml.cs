@@ -101,7 +101,21 @@ public partial class App : Application
         base.OnStartup(e);
 
         _diagnostics = new MainWindow();
-        _host = new DictationHost();
+        try
+        {
+            _host = new DictationHost();
+        }
+        catch (Exception ex)
+        {
+            // The keyboard hook failed to install (error matrix #11) — Outspoken cannot function
+            // without its push-to-talk hook. This is a fatal startup failure, outside the dictation
+            // flow, so a dialog is the honest signal (the no-dialog rule governs the dictation flow).
+            MessageBox.Show(
+                $"Outspoken could not start its push-to-talk hotkey and will exit.\n\n{ex.Message}",
+                "Outspoken — cannot start", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown();
+            return;
+        }
         _host.Log += line => _diagnostics.Append(line);
         _tray = BuildTray();
 
