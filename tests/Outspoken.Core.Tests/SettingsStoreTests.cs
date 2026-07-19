@@ -17,6 +17,7 @@ public class SettingsStoreTests
         Assert.True(s.AudioCuesEnabled);   // on by default
         Assert.False(s.RawModeDefault);
         Assert.False(s.LaunchAtLogin);
+        Assert.Equal("", s.CustomVocabulary); // no vocabulary shipped by default
     }
 
     [Fact]
@@ -26,12 +27,13 @@ public class SettingsStoreTests
         try
         {
             var store = new SettingsStore(path);
-            store.Save(new AppSettings { AudioCuesEnabled = false, RawModeDefault = true, LaunchAtLogin = true });
+            store.Save(new AppSettings { AudioCuesEnabled = false, RawModeDefault = true, LaunchAtLogin = true, CustomVocabulary = "Outspoken, Moneybox" });
 
             var loaded = new SettingsStore(path).Load();
             Assert.False(loaded.AudioCuesEnabled);
             Assert.True(loaded.RawModeDefault);
             Assert.True(loaded.LaunchAtLogin);
+            Assert.Equal("Outspoken, Moneybox", loaded.CustomVocabulary);
         }
         finally
         {

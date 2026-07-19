@@ -27,13 +27,17 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
     private readonly SemaphoreSlim _lock = new(1, 1);
     private WhisperProcessor _processor;
     private bool _rebuildRequested;
+    // Whisper initial-prompt built from the user's custom vocabulary (T13). Reference assignment is
+    // atomic; a rebuild reads it under _lock. Null/empty means no vocabulary priming.
+    private volatile string? _vocabularyPrompt;
 
-    private WhisperTranscriber(string modelPath, WhisperFactory factory, WhisperProcessor processor, TimeSpan modelLoadTime)
+    private WhisperTranscriber(string modelPath, WhisperFactory factory, WhisperProcessor processor, TimeSpan modelLoadTime, string? vocabularyPrompt)
     {
         _modelPath = modelPath;
         _factory = factory;
         _processor = processor;
         ModelLoadTime = modelLoadTime;
+        _vocabularyPrompt = vocabularyPrompt;
     }
 
     /// <summary>Cold-start cost, logged at startup — must stay off the dictation path.</summary>
@@ -43,19 +47,22 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
     public event Action<string>? ProcessorRebuilt;
 
     /// <summary>Loads the model (downloading on first run) and warms the processor.</summary>
+    /// <param name="vocabulary">Optional custom vocabulary (user setting, T13) to bias recognition.</param>
     public static async Task<WhisperTranscriber> CreateAsync(
         string? modelDirectory = null,
         IProgress<double>? downloadProgress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? vocabulary = null)
     {
         var modelPath = await WhisperModelStore.EnsureModelAsync(modelDirectory, downloadProgress, cancellationToken);
 
+        var prompt = BuildVocabularyPrompt(vocabulary);
         var sw = Stopwatch.StartNew();
         var factory = WhisperFactory.FromPath(modelPath);
-        var processor = BuildProcessor(factory);
+        var processor = BuildProcessor(factory, prompt);
         sw.Stop();
 
-        return new WhisperTranscriber(modelPath, factory, processor, sw.Elapsed);
+        return new WhisperTranscriber(modelPath, factory, processor, sw.Elapsed, prompt);
     }
 
     /// <summary>
@@ -63,6 +70,28 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
     /// a processor that lived through sleep is not trusted.
     /// </summary>
     public void Rebuild() => _rebuildRequested = true;
+
+    /// <summary>
+    /// Swaps the custom vocabulary (T13). Takes effect on the next transcription via a processor
+    /// rebuild - call after the user edits the vocabulary in settings.
+    /// </summary>
+    public void UpdateVocabulary(string? vocabulary)
+    {
+        var prompt = BuildVocabularyPrompt(vocabulary);
+        if (prompt == _vocabularyPrompt)
+            return; // no change, don't churn the processor
+        _vocabularyPrompt = prompt;
+        _rebuildRequested = true;
+    }
+
+    /// <summary>Turns a user vocabulary list into a Whisper initial prompt, or null when empty.</summary>
+    private static string? BuildVocabularyPrompt(string? vocabulary)
+    {
+        var trimmed = vocabulary?.Trim();
+        return string.IsNullOrEmpty(trimmed)
+            ? null
+            : $"This is a dictation that may reference names and terms such as: {trimmed}.";
+    }
 
     public async Task<string> TranscribeAsync(CapturedAudio audio, CancellationToken cancellationToken = default)
     {
@@ -105,21 +134,27 @@ public sealed class WhisperTranscriber : ITranscriber, IDisposable
         {
             // A damaged processor may fail its own dispose; the replacement matters more.
         }
-        _processor = BuildProcessor(_factory);
+        _processor = BuildProcessor(_factory, _vocabularyPrompt);
         ProcessorRebuilt?.Invoke(reason);
     }
 
-    private static WhisperProcessor BuildProcessor(WhisperFactory factory)
+    private static WhisperProcessor BuildProcessor(WhisperFactory factory, string? vocabularyPrompt)
     {
         // Decode tuning (T12): dictation is a single utterance, so take one segment with no
         // cross-segment context, and greedy with best-of 1 (a single decode pass) instead of the
         // default best-of resampling. Cuts decode compute with no measured accuracy loss.
-        var greedy = (GreedySamplingStrategyBuilder)factory.CreateBuilder()
+        var builder = factory.CreateBuilder()
             .WithLanguage("en")
             .WithThreads(CoreInfo.WhisperThreadCap)
             .WithSingleSegment()
-            .WithNoContext()
-            .WithGreedySamplingStrategy();
+            .WithNoContext();
+
+        // Vocabulary priming (T13): the user's custom vocabulary biases recognition toward their
+        // product names / jargon. No terms configured -> no prompt (default behaviour).
+        if (!string.IsNullOrEmpty(vocabularyPrompt))
+            builder = builder.WithPrompt(vocabularyPrompt);
+
+        var greedy = (GreedySamplingStrategyBuilder)builder.WithGreedySamplingStrategy();
         greedy.WithBestOf(1);
         return greedy.ParentBuilder.Build();
     }

@@ -43,10 +43,10 @@ The listening pill is the product’s visible signature — a small, calm, paper
 
 ## Tray &amp; settings
 
-Outspoken lives in the system tray — always ready, no window in the way. A single settings panel holds everything: your Anthropic key (encrypted on-device via Windows DPAPI, never shown in plaintext), the push-to-talk hotkey, raw-by-default, sound cues, and launch-at-login.
+Outspoken lives in the system tray - always ready, no window in the way. A single settings panel holds everything: your Anthropic key (encrypted on-device via Windows DPAPI, never shown in plaintext), the push-to-talk hotkey, raw-by-default, sound cues, launch-at-login, and a **custom vocabulary** - names and jargon you dictate (product names, tech terms, people) that get misheard. Add your words there and local transcription biases toward them; it is stored only on your device, never in this repo.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="380" alt="Outspoken settings — a rounded cream panel with the brand mark, an API-key field, and toggles for raw mode, sound cues, and launch at login" />
+  <img src="docs/images/settings.png" width="380" alt="Outspoken settings - a rounded cream panel with the brand mark, an API-key field, the hotkey, and controls for raw mode, custom vocabulary, sound cues, and launch at login" />
 </p>
 
 ## Principles

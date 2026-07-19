@@ -34,12 +34,12 @@ public sealed class DictationHost : IDisposable
     /// <summary>Reflects whether a valid API key is configured and cleanup is active.</summary>
     public bool CleanupEnabled => _cleanup is not null;
 
-    public async Task InitAsync()
+    public async Task InitAsync(AppSettings settings)
     {
         try
         {
             var progress = new Progress<double>(p => Emit($"model download {p:P0}"));
-            _transcriber = await WhisperTranscriber.CreateAsync(downloadProgress: progress);
+            _transcriber = await WhisperTranscriber.CreateAsync(downloadProgress: progress, vocabulary: settings.CustomVocabulary);
             Emit($"model warm — load {_transcriber.ModelLoadTime.TotalMilliseconds:F0} ms");
             _transcriber.ProcessorRebuilt += reason => Emit($"whisper processor rebuilt ({reason})");
 
@@ -100,6 +100,7 @@ public sealed class DictationHost : IDisposable
         _cues.Enabled = settings.AudioCuesEnabled;
         if (_orchestrator is not null)
             _orchestrator.ForceRawMode = settings.RawModeDefault;
+        _transcriber?.UpdateVocabulary(settings.CustomVocabulary); // takes effect next dictation
     }
 
     private void OnStateChanged(DictationState state)

@@ -15,4 +15,11 @@ public sealed record AppSettings
 
     /// <summary>Start Outspoken automatically when Windows starts (HKCU Run key).</summary>
     public bool LaunchAtLogin { get; init; }
+
+    /// <summary>
+    /// Custom vocabulary (T13): comma- or line-separated names and terms the user dictates (product
+    /// names, jargon) that base.en tends to mishear. Primes the Whisper decoder toward these
+    /// spellings. Stored locally, edited in Settings - deliberately not shipped in the repo.
+    /// </summary>
+    public string CustomVocabulary { get; init; } = "";
 }
