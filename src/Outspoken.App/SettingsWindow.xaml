@@ -206,6 +206,15 @@
               <CheckBox x:Name="RawDefaultCheck" Style="{StaticResource Toggle}"
                         HorizontalAlignment="Right" VerticalAlignment="Center" />
             </Grid>
+            <Border Height="1" Background="#F0EADE" />
+            <StackPanel Margin="0,14">
+              <TextBlock Text="Custom vocabulary" Style="{StaticResource RowTitle}" />
+              <TextBlock Style="{StaticResource RowHint}"
+                         Text="Names and terms you dictate that get misheard - product names, jargon, people. Comma or line-separated. Stored locally on this device; improves transcription of these words." />
+              <TextBox x:Name="VocabularyBox" Margin="0,9,0,0" Padding="9,7" FontSize="12"
+                       MinHeight="56" MaxHeight="120" TextWrapping="Wrap" AcceptsReturn="True"
+                       VerticalScrollBarVisibility="Auto" BorderBrush="#E2DBCC" Background="White" />
+            </StackPanel>
           </StackPanel>
         </Border>
 

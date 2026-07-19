@@ -30,6 +30,7 @@ public partial class SettingsWindow : Window
         CuesCheck.IsChecked = settings.AudioCuesEnabled;
         RawDefaultCheck.IsChecked = settings.RawModeDefault;
         LaunchCheck.IsChecked = StartupRegistration.IsEnabled();
+        VocabularyBox.Text = settings.CustomVocabulary;
 
         var hasKey = ApiKeyStore.Exists;
         KeyStatus.Text = hasKey ? "✓ A key is configured." : "No key configured — cleanup is off.";
@@ -48,6 +49,7 @@ public partial class SettingsWindow : Window
                 AudioCuesEnabled = CuesCheck.IsChecked == true,
                 RawModeDefault = RawDefaultCheck.IsChecked == true,
                 LaunchAtLogin = LaunchCheck.IsChecked == true,
+                CustomVocabulary = VocabularyBox.Text.Trim(),
             };
             _store.Save(settings);
             _host.ApplySettings(settings);

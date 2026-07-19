@@ -128,7 +128,7 @@ public partial class App : Application
 
     private async Task InitAsync(AppSettings settings)
     {
-        await _host!.InitAsync();
+        await _host!.InitAsync(settings);
         _host.ApplySettings(settings);
     }
 
