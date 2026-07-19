@@ -62,6 +62,9 @@ public sealed class AnthropicCleanupClient : ICleanupClient, IDisposable
             {
                 Model = CoreInfo.CleanupModel,
                 MaxTokens = CoreInfo.CleanupMaxTokens,
+                // Deterministic editing, not creative generation: temperature 0 stops the model
+                // "helpfully" answering or refusing question/instruction-like transcripts (§8 bug).
+                Temperature = 0,
                 System = CleanupContract.SystemPrompt,
                 Messages = [new() { Role = Role.User, Content = rawTranscript }],
             }, cancellationToken: timeoutCts.Token);
