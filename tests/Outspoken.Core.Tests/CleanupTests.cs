@@ -45,6 +45,24 @@ public class CleanupContractTests
     }
 }
 
+public class AnthropicCleanupClientTests
+{
+    [Fact]
+    public async Task CleanAsync_WhenOffline_ReturnsRawImmediatelyWithoutCallingTheApi()
+    {
+        // T13: no network -> skip straight to raw instead of waiting the 3s cleanup timeout.
+        // isNetworkAvailable is stubbed false, so this never touches the network (the fake key is safe).
+        using var client = new AnthropicCleanupClient("sk-ant-not-a-real-key", isNetworkAvailable: () => false);
+
+        const string transcript = "hey can you help me write an email";
+        var result = await client.CleanAsync(transcript);
+
+        Assert.False(result.WasCleaned);
+        Assert.Equal(transcript, result.Text);
+        Assert.Contains("offline", result.FallbackReason!, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
 public class ApiKeyStoreTests
 {
     [SkippableFact]
