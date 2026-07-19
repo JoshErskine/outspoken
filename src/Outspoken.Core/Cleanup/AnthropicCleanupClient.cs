@@ -1,3 +1,4 @@
+using System.Net.NetworkInformation;
 using System.Text;
 using Anthropic;
 using Anthropic.Models.Messages;
@@ -13,11 +14,14 @@ public sealed class AnthropicCleanupClient : ICleanupClient, IDisposable
 {
     private readonly AnthropicClient _client;
     private readonly TimeSpan _timeout;
+    private readonly Func<bool> _isNetworkAvailable;
 
-    public AnthropicCleanupClient(string apiKey, TimeSpan? timeout = null)
+    /// <param name="isNetworkAvailable">Connectivity probe (injectable for tests); defaults to the OS NIC state.</param>
+    public AnthropicCleanupClient(string apiKey, TimeSpan? timeout = null, Func<bool>? isNetworkAvailable = null)
     {
         _client = new AnthropicClient { ApiKey = apiKey };
         _timeout = timeout ?? TimeSpan.FromMilliseconds(CoreInfo.CleanupTimeoutMs);
+        _isNetworkAvailable = isNetworkAvailable ?? NetworkInterface.GetIsNetworkAvailable;
     }
 
     public void Dispose() => (_client as IDisposable)?.Dispose();
@@ -52,6 +56,12 @@ public sealed class AnthropicCleanupClient : ICleanupClient, IDisposable
     {
         if (string.IsNullOrWhiteSpace(rawTranscript))
             return CleanupResult.Cleaned(rawTranscript);
+
+        // Offline fast-path (T13): with no network up, the cleanup POST would just stall until the
+        // 3s timeout before falling back to raw. Skip the wait and deliver raw immediately. Catches
+        // airplane mode / Wi-Fi off (all NICs down); connected-but-unreachable still uses the timeout.
+        if (!_isNetworkAvailable())
+            return CleanupResult.Raw(rawTranscript, "offline");
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(_timeout);
