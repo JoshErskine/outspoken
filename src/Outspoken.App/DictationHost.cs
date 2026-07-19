@@ -5,6 +5,7 @@ using Outspoken.App.Overlay;
 using Outspoken.Core;
 using Outspoken.Core.Audio;
 using Outspoken.Core.Cleanup;
+using Outspoken.Core.Diagnostics;
 using Outspoken.Core.Hotkeys;
 using Outspoken.Core.Injection;
 using Outspoken.Core.Orchestration;
@@ -25,6 +26,8 @@ public sealed class DictationHost : IDisposable
     private readonly WasapiAudioCaptureService _audio = new();
     private readonly AudioCuePlayer _cues = new(LoadCue("cue-start.wav"), LoadCue("cue-stop.wav"));
     private readonly PillWindow _pill = new();
+    // Errors-only local log (spec §5). Operator-facing failures only - never dictation content.
+    private readonly ErrorLog _errorLog = new();
     private WhisperTranscriber? _transcriber;
     private AnthropicCleanupClient? _cleanup;
     private DictationOrchestrator? _orchestrator;
@@ -41,7 +44,7 @@ public sealed class DictationHost : IDisposable
             var progress = new Progress<double>(p => Emit($"model download {p:P0}"));
             _transcriber = await WhisperTranscriber.CreateAsync(downloadProgress: progress, vocabulary: settings.CustomVocabulary);
             Emit($"model warm — load {_transcriber.ModelLoadTime.TotalMilliseconds:F0} ms");
-            _transcriber.ProcessorRebuilt += reason => Emit($"whisper processor rebuilt ({reason})");
+            _transcriber.ProcessorRebuilt += reason => { Emit($"whisper processor rebuilt ({reason})"); _errorLog.Write($"whisper processor rebuilt ({reason})"); };
 
             // A processor that lived through sleep comes back ~10x degraded (dogfood 2026-07-14).
             Microsoft.Win32.SystemEvents.PowerModeChanged += (_, e) =>
@@ -58,7 +61,7 @@ public sealed class DictationHost : IDisposable
             _orchestrator.StateChanged += OnStateChanged;
             _orchestrator.Completed += OnCompleted;
             _orchestrator.NoSpeech += () => { OnUi(() => _pill.Dismiss()); Emit("(no speech — dismissed)"); };
-            _orchestrator.Failed += m => { OnUi(() => _pill.ShowError("dictation error")); Emit($"error: {m}"); };
+            _orchestrator.Failed += m => { OnUi(() => _pill.ShowError("dictation error")); Emit($"error: {m}"); _errorLog.Write($"dictation error: {m}"); };
 
             ReloadCleanup();
             Emit("ready");
@@ -66,6 +69,7 @@ public sealed class DictationHost : IDisposable
         catch (Exception ex)
         {
             Emit($"init failed: {ex.Message}");
+            _errorLog.Write($"init failed: {ex.Message}");
         }
     }
 
@@ -135,6 +139,13 @@ public sealed class DictationHost : IDisposable
         // Per-segment budget breakdown (spec §3) - the live half of the T12 latency harness.
         foreach (var line in LatencyBudget.Evaluate(r))
             Emit($"    {line.Name,-12} {line.Measured.TotalSeconds,5:F2}s / {line.Limit.TotalSeconds:F2}s  {(line.Over ? "OVER" : "ok")}");
+
+        // A cleanup that was wanted but fell back to raw due to a real failure (bad key, timeout,
+        // 5xx) is worth the error log - it points at an API problem. Log the REASON only, never the
+        // transcript. Expected fallbacks (offline, no key configured) are not errors, so skip them.
+        if (!r.RawMode && !r.WasCleaned && r.CleanupFallbackReason is { } reason
+            && !reason.Contains("offline") && !reason.Contains("no cleanup client"))
+            _errorLog.Write($"cleanup fallback: {reason}");
     }
 
     private static void OnUi(Action action) => Application.Current.Dispatcher.BeginInvoke(action);
