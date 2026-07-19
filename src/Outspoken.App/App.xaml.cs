@@ -75,6 +75,15 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Length > 0 && e.Args[0].Equals("soak", StringComparison.OrdinalIgnoreCase))
+        {
+            // soak [iterations] - memory soak over many transcriptions (T13). Off the dispatcher thread.
+            var iterations = e.Args.Length > 1 && int.TryParse(e.Args[1], out var it) ? it : 200;
+            Task.Run(() => LatencyHarness.SoakAsync(iterations)).GetAwaiter().GetResult();
+            Shutdown();
+            return;
+        }
+
         // If Outspoken is already running, don't start a second copy - instead ask the running
         // instance to open its window (so a pinned-taskbar click or re-launch surfaces the UI), then exit.
         _singleInstance = new System.Threading.Mutex(initiallyOwned: true, "Outspoken.SingleInstance", out var isNew);

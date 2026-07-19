@@ -72,9 +72,9 @@ public sealed class AnthropicCleanupClient : ICleanupClient, IDisposable
             {
                 Model = CoreInfo.CleanupModel,
                 MaxTokens = CoreInfo.CleanupMaxTokens,
-                // Deterministic editing, not creative generation: temperature 0 stops the model
-                // "helpfully" answering or refusing question/instruction-like transcripts (§8 bug).
-                Temperature = 0,
+                // No Temperature: it is deprecated (models after Opus 4.6 reject non-1.0 with a 400),
+                // and the hardened CleanupContract prompt already stops the model answering/refusing
+                // instruction-like transcripts on its own (§8 bug; verified 0/25 via CleanupProbe).
                 System = CleanupContract.SystemPrompt,
                 Messages = [new() { Role = Role.User, Content = rawTranscript }],
             }, cancellationToken: timeoutCts.Token);
