@@ -135,6 +135,42 @@ public static class LatencyHarness
         }
     }
 
+    /// <summary>
+    /// Memory soak (T13): runs many transcriptions back to back and reports the managed heap (the
+    /// true leak signal, measured after a full GC) and working set at intervals. Flat managed heap =
+    /// no leak; a monotonic climb = a leak to chase. Run via <c>Outspoken.App.exe soak [iterations]</c>.
+    /// </summary>
+    public static async Task SoakAsync(int iterations)
+    {
+        var fixturesDir = FindFixturesDir();
+        var audio = LoadWav(Path.Combine(fixturesDir, "clip_10s.wav"));
+        var transcriber = await WhisperTranscriber.CreateAsync();
+
+        void Report(string tag)
+        {
+            var proc = System.Diagnostics.Process.GetCurrentProcess();
+            proc.Refresh();
+            var managed = GC.GetTotalMemory(forceFullCollection: true) / (1024.0 * 1024.0);
+            var ws = proc.WorkingSet64 / (1024.0 * 1024.0);
+            Console.WriteLine($"{tag,-14} managed heap {managed,6:F1} MB | working set {ws,7:F1} MB | GC {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");
+            Console.Out.Flush();
+        }
+
+        Console.WriteLine($"# Memory soak - {iterations} transcriptions of clip_10s\n");
+        await transcriber.TranscribeAsync(audio); // warm-up, excluded from the count
+        Report("baseline");
+
+        for (var i = 1; i <= iterations; i++)
+        {
+            _ = await transcriber.TranscribeAsync(audio);
+            if (i % 25 == 0)
+                Report($"after {i}");
+        }
+
+        Report("final");
+        transcriber.Dispose();
+    }
+
     private static CapturedAudio LoadWav(string path)
     {
         using var reader = new AudioFileReader(path); // 32-bit float samples, interleaved
