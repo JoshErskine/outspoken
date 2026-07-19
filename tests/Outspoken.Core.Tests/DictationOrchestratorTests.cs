@@ -44,13 +44,15 @@ public class DictationOrchestratorTests
     {
         public string Result = "hello world";
         public bool Throws;
+        public bool Hangs; // simulates a stalled inference — waits on the token until the watchdog cancels
         public bool Called;
 
-        public Task<string> TranscribeAsync(CapturedAudio audio, CancellationToken ct = default)
+        public async Task<string> TranscribeAsync(CapturedAudio audio, CancellationToken ct = default)
         {
             Called = true;
             if (Throws) throw new InvalidOperationException("model exploded");
-            return Task.FromResult(Result);
+            if (Hangs) await Task.Delay(Timeout.Infinite, ct);
+            return Result;
         }
     }
 
@@ -209,14 +211,35 @@ public class DictationOrchestratorTests
     {
         var (hotkeys, _, transcriber, injector, _, orch) = Create();
         transcriber.Throws = true;
-        var failed = new TaskCompletionSource<string>();
-        orch.Failed += m => failed.TrySetResult(m);
+        var failed = new TaskCompletionSource<DictationFailure>();
+        orch.Failed += f => failed.TrySetResult(f);
 
         hotkeys.PressAndHold();
         hotkeys.Release();
 
-        Assert.Contains("model exploded", await WaitFor(failed));
+        var failure = await WaitFor(failed);
+        Assert.Equal(DictationFailureKind.Transcription, failure.Kind);
+        Assert.Contains("model exploded", failure.Detail);
         Assert.Empty(injector.Injected);
+        Assert.Equal(DictationState.Idle, orch.State);
+    }
+
+    [Fact]
+    public async Task TranscriptionStall_CancelledByWatchdog_RaisesFailed_ReturnsToIdle()
+    {
+        var (hotkeys, _, transcriber, injector, _, orch) = Create();
+        transcriber.Hangs = true;
+        orch.TranscriptionStallTimeout = TimeSpan.FromMilliseconds(150); // keep the test fast
+        var failed = new TaskCompletionSource<DictationFailure>();
+        orch.Failed += f => failed.TrySetResult(f);
+
+        hotkeys.PressAndHold();
+        hotkeys.Release();
+
+        var failure = await WaitFor(failed);
+        Assert.Equal(DictationFailureKind.Transcription, failure.Kind);
+        Assert.Contains("stalled", failure.Detail);
+        Assert.Empty(injector.Injected);        // nothing delivered — but never frozen
         Assert.Equal(DictationState.Idle, orch.State);
     }
 
@@ -225,12 +248,13 @@ public class DictationOrchestratorTests
     {
         var (hotkeys, audio, _, _, _, orch) = Create();
         audio.StartThrows = true;
-        string? failure = null;
-        orch.Failed += m => failure = m;
+        DictationFailure? failure = null;
+        orch.Failed += f => failure = f;
 
         hotkeys.PressAndHold();
 
         Assert.NotNull(failure);
+        Assert.Equal(DictationFailureKind.Microphone, failure!.Kind);
         Assert.Equal(DictationState.Idle, orch.State);
     }
 
